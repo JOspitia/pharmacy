@@ -40,7 +40,7 @@ Sistema de gestión de almacenes (bodegas), productos farmacéuticos, lotes e in
 
 1. **Clonar el repositorio e ingresar al backend**
    ```bash
-   git clone https://github.com/JOspitia/MiAplication.git
+   git clone https://github.com/JOspitia/prueba-tecnica-johan-ospitia.git
    cd back
    ```
 
