@@ -11,6 +11,7 @@ import { Layout, Menu, Button, theme } from 'antd'
 import {
   AppstoreOutlined,
   DatabaseOutlined,
+  ShoppingOutlined,
   TeamOutlined,
   LogoutOutlined,
 } from '@ant-design/icons'
@@ -40,6 +41,7 @@ const navItems: NavItem[] = [
   { key: '1', label: 'Inicio', icon: <AppstoreOutlined />, path: '/Home' },
   { key: '2', label: 'Grupos', icon: <TeamOutlined />, path: '/groups' },
   { key: '3', label: 'Bodegas', icon: <DatabaseOutlined />, path: '/bodegas' },
+  { key: '4', label: 'Productos', icon: <ShoppingOutlined />, path: '/products' },
 ]
 
 /**
