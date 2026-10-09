@@ -20,6 +20,26 @@ jobs:
     # compilacion colgada consuma la cuenta entera.
     timeout-minutes: 10
 
+    # Las pruebas usan MySQL y no SQLite, asi que el job necesita la base
+    # levantada. La imagen viene del mismo espejo sin limite de descargas que
+    # usa el docker-compose, porque los service containers tambien pasan por
+    # Docker Hub y sufrian el mismo HTTP 429.
+    services:
+      mysql:
+        image: public.ecr.aws/docker/library/mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: farmacia
+          MYSQL_USER: farmacia
+          MYSQL_PASSWORD: farmacia
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
     defaults:
       run:
         working-directory: back

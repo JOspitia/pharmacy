@@ -26,6 +26,7 @@ tests/CurlRequest/
 .vscode/
 .idea/
 
-# Documentacion que no necesita estar dentro de la imagen.
+# Documentacion que no hace falta dentro de la imagen.
+# phpunit.xml NO se excluye a proposito: las pruebas se ejecutan dentro del
+# contenedor con `docker compose exec backend php artisan test`.
 README.md
-phpunit.xml

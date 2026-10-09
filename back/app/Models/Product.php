@@ -19,7 +19,7 @@ class Product extends Model
     // Definir el tipo de dato de la clave primaria
     protected $keyType = 'string';
 
-    // Deshabilitar el incremento automático
+    // Deshabilitar el incremento automÃƒÂ¡tico
     public $incrementing = false;
 
     // Campos que se pueden asignar masivamente
@@ -74,7 +74,7 @@ class Product extends Model
         'status' => true,
     ];
 
-    // Definir qué pasa con el grupo al crear o actualizar
+    // Definir quÃƒÂ© pasa con el grupo al crear o actualizar
     protected static function booted(): void
     {        
         // Al crear un grupo, generar UUID y obtener el usuario autenticado

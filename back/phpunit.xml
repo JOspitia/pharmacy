@@ -21,11 +21,20 @@
         <env name="APP_ENV" value="testing"/>
         <env name="BCRYPT_ROUNDS" value="4"/>
         <env name="CACHE_DRIVER" value="array"/>
-        <!-- <env name="DB_CONNECTION" value="sqlite"/> -->
-        <!-- <env name="DB_DATABASE" value=":memory:"/> -->
         <env name="MAIL_MAILER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
         <env name="SESSION_DRIVER" value="array"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
+
+        <!--
+            Las pruebas usan el mismo motor que producción (MySQL) en lugar de
+            SQLite. SQLite no reproduce el comportamiento de LIKE, que en
+            MySQL es insensible a mayusculas y en SQLite dependeda de la
+            collation, y esa diferencia es justamente la que sostiene la
+            busqueda del reporte de inventario. Ademas MySQL devuelve los
+            enteros de las columnas numericas como string, que fue el origen
+            del bug de cast de stock que estas pruebas cubren.
+        -->
+        <env name="DB_CONNECTION" value="mysql"/>
     </php>
 </phpunit>
