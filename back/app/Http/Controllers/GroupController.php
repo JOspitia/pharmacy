@@ -21,6 +21,19 @@ class GroupController extends Controller
     }
 
     /**
+     * Listado optimizado para selectores.
+     */
+    public function select()
+    {
+        $groups = Group::where('status', true)
+            ->select('id', 'name')
+            ->orderBy('name')
+            ->get();
+
+        return response()->json(['data' => $groups]);
+    }
+
+    /**
      * Mostrar los grupos existentes
      */
     public function index()

@@ -5,6 +5,8 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BodegaController;
 use App\Http\Controllers\GroupController;
+use App\Http\Controllers\ProductController;
+use App\Http\Controllers\UnitController;
 
 /*
 |--------------------------------------------------------------------------
@@ -14,6 +16,7 @@ use App\Http\Controllers\GroupController;
 | Here is where you can register API routes for your application. These
 | routes are loaded by the RouteServiceProvider within a group which
 | is assigned the "api" middleware group. Enjoy building your API!
+|
 |
 */
 
@@ -30,6 +33,10 @@ Route::middleware('auth:sanctum')->group(function () {
     // Autenticación
     Route::post('/logout', [AuthController::class, 'logout']);
 
+    // Listados para selects
+    Route::get('groups/select', [GroupController::class, 'select']);
+    Route::get('units/select', [UnitController::class, 'select']);
+
     // Grupos
     Route::patch('groups/{group}/toggle-status', [GroupController::class, 'toggleStatus']);
     Route::apiResource('groups', GroupController::class);
@@ -37,4 +44,9 @@ Route::middleware('auth:sanctum')->group(function () {
     // Bodegas
     Route::patch('bodegas/{bodega}/toggle-status', [BodegaController::class, 'toggleStatus']);
     Route::apiResource('bodegas', BodegaController::class);
+
+    // Productos
+    Route::get('products/form-data', [ProductController::class, 'formData']);
+    Route::patch('products/{product}/toggle-status', [ProductController::class, 'toggleStatus']);
+    Route::apiResource('products', ProductController::class);
 });
