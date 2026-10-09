@@ -52,7 +52,7 @@ export function AppLayout() {
    * Hook para obtener el usuario y la función de logout
    * @returns {UseAuthReturn}
    */
-  const { user, logout } = useAuth()
+  const { logout } = useAuth()
 
   /**
    * Hook para navegar entre rutas
