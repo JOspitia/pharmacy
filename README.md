@@ -1,6 +1,8 @@
 # Prueba Técnica — Gestión de Almacenes con Monitoreo IoT
 
-Sistema de gestión de almacenes (bodegas), productos farmacéuticos, lotes e inventario, complementado con monitoreo de condiciones ambientales mediante sensores IoT (temperatura, humedad y CO2).
+![CI](https://github.com/JOspitia/pharmacy/actions/workflows/ci.yml/badge.svg)
+
+Sistema de gestión de almacenes (bodegas), productos farmacéuticos, lotes e inventario, complementado con monitoreo de condiciones ambientales mediante sensores IoT (temperatura y humedad).
 
 ---
 
@@ -11,7 +13,11 @@ Sistema de gestión de almacenes (bodegas), productos farmacéuticos, lotes e in
 - **Vite**: Entorno de desarrollo rápido y empaquetador.
 - **React Router DOM v7**: Enrutamiento declarativo con rutas anidadas.
 - **Ant Design**: Biblioteca de componentes de UI.
-- **Axios**: Cliente HTTP para las llamadas a la API.
+- **Fetch API**: Cliente HTTP nativo del navegador para las llamadas a la API.
+
+### Infraestructura
+- **Docker 29** + **Docker Compose**: Entorno de ejecución con MySQL 8, backend y frontend.
+- **GitHub Actions**: Pipeline de integración continua con tres jobs (backend, frontend, docker).
 
 ### Backend
 - **Laravel 9**: Framework PHP para la API REST.

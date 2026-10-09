@@ -40,6 +40,14 @@ jobs:
       - name: Instalar dependencias
         run: composer install --no-interaction --prefer-dist --no-progress
 
+      # El runner parte de un checkout limpio, sin .env porque esta en el
+      # .gitignore. Sin APP_KEY el middleware EncryptCookies lanza
+      # MissingAppKeyException en cuanto una prueba hace una peticion HTTP.
+      - name: Preparar entorno de pruebas
+        run: |
+          cp .env.example .env
+          php artisan key:generate --force
+
       - name: Verificar sintaxis PHP
         run: |
           errores=0
@@ -93,6 +101,16 @@ jobs:
     steps:
       - name: Descargar codigo
         uses: actions/checkout@v4
+
+      # Los runners de GitHub comparten IP y Docker Hub limita las descargas
+      # anonimas con HTTP 429. mirror.gcr.io es un espejo del mismo contenido
+      # sin ese limite.
+      - name: Configurar espejo de imagenes
+        run: |
+          sudo tee /etc/docker/daemon.json > /dev/null <<'EOF'
+          { "registry-mirrors": ["https://mirror.gcr.io"] }
+          EOF
+          sudo systemctl restart docker
 
       - name: Validar configuracion de compose
         run: docker compose config --quiet
