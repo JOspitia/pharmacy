@@ -111,12 +111,35 @@ export function LotsList() {
       dataIndex: 'expiration_date',
       key: 'expiration_date',
       width: 130,
+      render: (date: string) => {
+        if (!date) return '—'
+        return new Date(date).toLocaleDateString('es-CO', {
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+        })
+      },
     },
     {
       title: 'Estado',
+      dataIndex: 'derived_status',
+      key: 'derived_status',
+      width: 160,
+      render: (status: string) => {
+        const color =
+          status === 'Con stock' ? 'cyan' :
+          status === 'Sin stock' ? 'default' :
+          status.startsWith('Por vencer') ? 'orange' :
+          status === 'Vencido' ? 'red' :
+          'default'
+        return <Tag color={color}>{status}</Tag>
+      },
+    },
+    {
+      title: '¿Activo?',
       dataIndex: 'status',
       key: 'status',
-      width: 140,
+      width: 100,
       render: (status: boolean, record: Lot) => (
         <Popconfirm
           title={status ? '¿Inactivar este lote?' : '¿Activar este lote?'}
@@ -131,7 +154,7 @@ export function LotsList() {
           disabled={record.stock > 0}
         >
           <Tag
-            color={status ? 'cyan' : 'default'}
+            color={status ? 'green' : 'default'}
             style={{ cursor: record.stock > 0 ? 'not-allowed' : 'pointer', userSelect: 'none' }}
           >
             {status ? '● Activo' : '○ Inactivo'}
