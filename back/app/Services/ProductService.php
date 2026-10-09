@@ -71,9 +71,9 @@ class ProductService
      */
     public function toggleStatus(Product $product): Product
     {
-        // Validar si el producto pertenece a un lote
+        // Validar si el producto tiene stock activo en lotes
         if ($this->hasActiveStockInLots($product)) {
-            throw new Exception("No se puede eliminar, el producto tiene stock activo en uno o más lotes");
+            throw new Exception("No se puede inactivar, el producto tiene stock activo en uno o más lotes");
         }
         
         $product->status = !$product->status;
@@ -115,11 +115,10 @@ class ProductService
      */
     private function hasActiveStockInLots(Product $product): bool
     {
+        // HU-01: lotes con stock > 0, status = true y deleted_at IS NULL.
         return $product->lots()
-            ->whereHas('inventories', function ($query) {
-                $query->where('quantity', '>', 0)
-                    ->whereNull('deleted_at');
-            })
+            ->where('stock', '>', 0)
+            ->where('status', true)
             ->exists();
     }
     
@@ -128,35 +127,36 @@ class ProductService
      */
     private function checkUniquenessConstraints(array $data, ?string $productId = null): void
     {
-        // Campos que no deben repetirse
+        // Campos que no deben repetirse, con el mensaje exacto que exige HU-01
         $fields = [
-            'cum' => 'CUM', 
-            'invima_registration' => 'registro Invima'
-        ];   
+            'name' => 'El nombre del producto ya existe',
+            'cum' => 'El CUM ya existe',
+            'invima_registration' => 'El registro Invima ya existe'
+        ];
 
         // Validar campos obligatorios
-        foreach ($fields as $field => $fieldName) {
+        foreach ($fields as $field => $errorMessage) {
             $query = Product::whereRaw("LOWER({$field}) = ?", [strtolower($data[$field])]);
-            
+
             if ($productId) {
                 $query->where('id', '!=', $productId);
             }
 
             if ($query->exists()) {
-                throw new Exception("El campo {$fieldName} con valor {$data[$field]} ya existe.", 409);
+                throw new Exception($errorMessage, 409);
             }
         }
-        
+
         // Verificar código de barras si no está vacío
         if (!empty($data['barcode'])) {
             $queryBarcode = Product::whereRaw("LOWER(barcode) = ?", [strtolower($data['barcode'])]);
-            
+
             if ($productId) {
                 $queryBarcode->where('id', '!=', $productId);
             }
 
             if ($queryBarcode->exists()) {
-                throw new Exception("El campo código de barras con valor {$data['barcode']} ya existe.");
+                throw new Exception('El código de barras ya existe', 409);
             }
         }
     }

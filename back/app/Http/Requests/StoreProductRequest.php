@@ -3,7 +3,6 @@
 namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Validation\Rule;
 
 /**
  * Clase que recibe los datos y los valida antes de que lleguen al controlador.
@@ -16,39 +15,22 @@ class StoreProductRequest extends FormRequest
         return true;
     }
 
-    // Reglas de validación
+    // La unicidad de name, cum, barcode e invima_registration NO se valida aqui
+    // a proposito: HU-01 exige HTTP 409 Conflict con mensaje en espanol
+    // (SP-06, SP-07, SP-08, SP-16), y esa respuesta la produce
+    // ProductService::checkUniquenessConstraints(). Si se declarara aqui un
+    // Rule::unique, Laravel responderia 422 con el mensaje generico en ingles
+    // y el Service nunca llegaria a ejecutarse.
     public function rules(): array
     {
         return [
             'name' => 'required|string|max:100',
-            'cum' => [
-                'required',
-                'string',
-                'max:30',
-                Rule::unique('products', 'cum')
-                    ->ignore($this->route('product'))
-                    ->whereNull('deleted_at')
-            ],
-            'barcode' => [
-                'nullable',
-                'string',
-                'max:60',
-                Rule::unique('products', 'barcode')
-                    ->ignore($this->route('product'))
-                    ->whereNull('deleted_at')
-            ],
-            'invima_registration' => [
-                'required',
-                'string',
-                'max:60',
-                Rule::unique('products', 'invima_registration')
-                    ->ignore($this->route('product'))
-                    ->whereNull('deleted_at')
-            ],
+            'cum' => 'required|string|max:30',
+            'barcode' => 'nullable|string|max:60',
+            'invima_registration' => 'required|string|max:60',
             'unit_id' => 'required|uuid|exists:units,id',
             'group_id' => 'required|uuid|exists:groups,id',
             'description' => 'nullable|string',
-            'status' => 'boolean',
         ];
     }
 
@@ -61,7 +43,6 @@ class StoreProductRequest extends FormRequest
             'barcode' => !empty($this->barcode) ? trim($this->barcode) : null,
             'invima_registration' => trim($this->invima_registration),
             'description' => $this->description ? trim($this->description) : null,
-            'status' => (bool) $this->status,
         ]);
     }
 
@@ -83,7 +64,6 @@ class StoreProductRequest extends FormRequest
             'group_id.uuid' => 'El grupo debe ser un UUID válido.',
             'group_id.exists' => 'El grupo seleccionado no existe.',
             'description.string' => 'La descripción debe ser texto.',
-            'status.boolean' => 'El estado debe ser verdadero o falso.',
         ];
     }
 }

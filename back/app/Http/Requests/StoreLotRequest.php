@@ -45,9 +45,21 @@ class StoreLotRequest extends FormRequest
             }),
         ],
             'stock' => 'required|integer|min:0',
-            'expiration_date' => 'required|date',
+            'expiration_date' => [
+                'required',
+                'date',
+                // HU-05 exige fecha ESTRICTAMENTE futura: "anterior o igual a la
+                // fecha actual" se rechaza (SP-13, CL-08, CA-25).
+                // Al editar solo se exige si el usuario cambia la fecha, porque un
+                // lote ya vencido es un estado valido del dominio
+                // (derived_status = "Vencido") y debe seguir siendo editable.
+                Rule::when(
+                    $this->isMethod('POST')
+                    || $this->expiration_date !== $this->route('lot')?->expiration_date?->format('Y-m-d'),
+                    ['after:today']
+                ),
+            ],
             'description' => 'nullable|string|max:300',
-            'status' => 'boolean',
         ];
     }
 
@@ -78,9 +90,9 @@ class StoreLotRequest extends FormRequest
             'stock.min' => 'El stock debe ser mayor o igual a 0.',
             'expiration_date.required' => 'La fecha de expiración es requerida.',
             'expiration_date.date' => 'La fecha de expiración debe ser una fecha válida.',
+            'expiration_date.after' => 'La fecha de vencimiento debe ser posterior a la fecha actual.',
             'description.string' => 'La descripción debe ser texto.',
             'description.max' => 'La descripción debe tener como máximo 300 caracteres.',
-            'status.boolean' => 'El estado debe ser verdadero o falso.',
         ];
     }
 }

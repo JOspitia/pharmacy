@@ -76,10 +76,10 @@ export function LotFormModal() {
         name: lotData.data.name,
         product_id: lotData.data.product?.id ?? '',
         warehouse_id: lotData.data.warehouse?.id ?? '',
-        stock: lotData.data.stock,
+        stock: Number(lotData.data.stock),
         expiration_date: lotData.data.expiration_date
           ? dayjs(lotData.data.expiration_date)
-          : null,
+          : undefined,
         description: lotData.data.description ?? '',
       })
     }

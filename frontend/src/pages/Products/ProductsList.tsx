@@ -3,7 +3,7 @@
  * Se renderiza dentro de AppLayout
  */
 import { useMemo, useState } from 'react'
-import { Button, Input, Space, Table, Popconfirm, message } from 'antd'
+import { Button, Input, Space, Table, Tag, Popconfirm, message } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { EditOutlined, DeleteOutlined, ReloadOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
@@ -43,6 +43,22 @@ export function ProductsList() {
    */
   const query = `/api/products?page=${page}${debouncedSearch ? `&name=${encodeURIComponent(debouncedSearch)}` : ''}`
   const { data, error, isLoading, refetch } = useApi<ProductListResponse>(query, [page, debouncedSearch])
+
+  /**
+   * Activa o inactiva un producto
+   * @param product - Producto a cambiar de estado
+   * @returns {Promise<void>}
+   */
+  const handleToggleStatus = async (product: Product) => {
+    try {
+      await apiFetch(`/api/products/${product.id}/toggle-status`, { method: 'PATCH' })
+      message.success(`Producto ${product.status ? 'inactivado' : 'activado'}`)
+      refetch()
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'No se pudo cambiar el estado'
+      message.error(msg)
+    }
+  }
 
   /**
    * Elimina un producto
@@ -113,16 +129,47 @@ export function ProductsList() {
       width: 170,
     },
     {
-      title: 'Fecha Registro',
-      dataIndex: 'created_at',
-      key: 'created_at',
+      title: 'Grupo',
+      dataIndex: ['group', 'name'],
+      key: 'group',
+      width: 150,
+      render: (_: unknown, record: Product) =>
+        record.group?.name ?? <span style={{ color: '#94a3b8' }}>—</span>,
+    },
+    {
+      title: 'Unidad',
+      dataIndex: ['unit', 'name'],
+      key: 'unit',
+      width: 130,
+      render: (_: unknown, record: Product) => {
+        const unit = record.unit
+        if (!unit) return <span style={{ color: '#94a3b8' }}>—</span>
+        return unit.abbreviation
+          ? `${unit.name} (${unit.abbreviation})`
+          : unit.name
+      },
+    },
+    {
+      title: 'Estado',
+      dataIndex: 'status',
+      key: 'status',
       width: 120,
-      render: (date: string) =>
-        new Date(date).toLocaleDateString('es-CO', {
-          year: 'numeric',
-          month: '2-digit',
-          day: '2-digit',
-        }),
+      render: (status: boolean, record: Product) => (
+        <Popconfirm
+          title={status ? '¿Inactivar este producto?' : '¿Activar este producto?'}
+          description="Si tiene lotes con stock activo, la operación se bloqueará."
+          onConfirm={() => handleToggleStatus(record)}
+          okText="Sí"
+          cancelText="No"
+        >
+          <Tag
+            color={status ? 'cyan' : 'default'}
+            style={{ cursor: 'pointer', userSelect: 'none' }}
+          >
+            {status ? '● Activo' : '○ Inactivo'}
+          </Tag>
+        </Popconfirm>
+      ),
     },
     {
       title: 'Acciones',

@@ -61,6 +61,9 @@ class Lot extends Model
     protected $casts = [
         'expiration_date' => 'date',
         'status' => 'boolean',
+        // Sin este cast SQL Server devuelve los enteros como string ("10")
+        // y el frontend recibe un tipo inesperado en la respuesta.
+        'stock' => 'integer',
         'product_id' => 'string',
         'warehouse_id' => 'string',
     ];

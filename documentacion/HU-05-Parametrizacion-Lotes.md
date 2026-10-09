@@ -13,7 +13,7 @@ Tabla: `lots`
 | Columna | Tipo | Restricciones |
 |---|---|---|
 | id | uuid | PK, autogenerado por el sistema (lado del servidor/BD) |
-| code | varchar(60) | UNIQUE, NOT NULL, unicidad insensible a mayúsculas/minúsculas |
+| name | varchar(120) | UNIQUE, NOT NULL, unicidad insensible a mayúsculas/minúsculas. Representa el código del lote (se muestra como "Código" en la interfaz) |
 | product_id | uuid | FK → products (id), NOT NULL, onDelete RESTRICT |
 | warehouse_id | uuid | FK → bodegas (id), NOT NULL, onDelete RESTRICT |
 | stock | integer | NOT NULL, valor por defecto 0, mínimo 0 |
@@ -41,7 +41,7 @@ Sigue la política global de onDelete documentada en AI_USAGE.md.
 - Debe existir la tabla `users` (estructura estándar de Laravel 9).
 - Debe existir la tabla `products` (HU-01 – Productos) — el campo `product_id` es FK hacia ella.
 - Debe existir la tabla `bodegas` (HU-03 – Bodegas) — el campo `warehouse_id` es FK hacia ella.
-- Debe estar definido el diseño UI/UX del formulario (campos: `code`, `product_id`, `warehouse_id`, `stock`, `expiration_date`).
+- Debe estar definido el diseño UI/UX del formulario (campos: `name`, `product_id`, `warehouse_id`, `stock`, `expiration_date`).
 - La validación "no eliminar si stock > 0" depende de la tabla `lots`. Si el endpoint de verificación no está disponible, la validación se omite (no-op).
 - Esta HU es un prerrequisito para HU-02 (Búsqueda de Productos) y para futuras HU de ventas/despacho, ya que provee los estados derivados de stock y vencimiento.
 
@@ -49,7 +49,7 @@ Sigue la política global de onDelete documentada en AI_USAGE.md.
 
 | Variable | Tipo | Entornos | Valor por defecto | Descripción |
 |---|---|---|---|---|
-| LOT_CODE_MAX_LENGTH | integer | todos | 60 | Longitud máxima permitida para el campo `code`. |
+| LOT_CODE_MAX_LENGTH | integer | todos | 120 | Longitud máxima permitida para el campo `name`. |
 | STOCK_MIN_VALUE | integer | todos | 0 | Valor mínimo permitido para el campo `stock`. |
 | EXPIRATION_FUTURE_DAYS | integer | todos | 1 | Diferencia mínima de días entre `expiration_date` y la fecha actual (debe ser > hoy). |
 | DERIVED_STATE_FILTER | string | todos | "Todos" | Filtro derivado para listados: "Todos", "Con stock", "Por vencer (30 días)", "Vencido". No se almacena en BD. |
@@ -77,12 +77,12 @@ Estos estados son COMPUTADOS en tiempo de consulta por el backend de HU-02. No s
 1. La tabla `users` existe con la estructura estándar de Laravel 9 (`id`, `name`, `email`, `password`, `timestamps`).
 2. La tabla `products` (HU-01) existe y contiene al menos un producto antes de crear un lote.
 3. La tabla `bodegas` (HU-03) existe y contiene al menos una bodega antes de crear un lote.
-4. El diseño UI del formulario de lote incluye exactamente los campos solicitados: `code` (texto), `product_id` (select de productos), `warehouse_id` (select de bodegas), `stock` (entero) y `expiration_date` (selector de fecha).
+4. El diseño UI del formulario de lote incluye exactamente los campos solicitados: `name` (texto), `product_id` (select de productos), `warehouse_id` (select de bodegas), `stock` (entero) y `expiration_date` (selector de fecha).
 5. Los seeders pueden ejecutarse en cualquier entorno (dev, staging, production).
 6. No existen restricciones de infraestructura por ahora; si se requiere, limitar a 100 lotes mediante configuración global (fuera de alcance).
 7. `created_at` se asigna automáticamente por Eloquent al crear el registro.
 8. El UUID `id` es generado automáticamente por el sistema (lado del servidor/BD), no se proporciona externamente.
-9. La unicidad de `code` se valida tanto en el frontend (antes del envío) como en el backend (antes de la persistencia), y es insensible a mayúsculas/minúsculas.
+9. La unicidad de `name` se valida tanto en el frontend (antes del envío) como en el backend (antes de la persistencia), y es insensible a mayúsculas/minúsculas.
 10. `created_by` se obtiene del usuario de la sesión autenticada y no puede elegirse manualmente en el formulario.
 11. La `expiration_date` debe ser una fecha válida posterior a la fecha actual; las fechas pasadas o iguales a hoy se rechazan.
 12. El `stock` por defecto es 0 y el usuario puede establecer un stock inicial en la creación; nunca puede ser negativo.
@@ -105,16 +105,16 @@ Estos estados son COMPUTADOS en tiempo de consulta por el backend de HU-02. No s
 
 ### Listar y Crear
 1. El usuario navega a la pantalla "Lotes".
-2. El sistema muestra un formulario de registro en la parte superior con los campos: `code` (entrada de texto, máximo 60 caracteres), `product_id` (select de productos activos), `warehouse_id` (select de bodegas activas), `stock` (entrada numérica, mínimo 0) y `expiration_date` (selector de fecha).
+2. El sistema muestra un formulario de registro en la parte superior con los campos: `name` (entrada de texto, máximo 120 caracteres), `product_id` (select de productos activos), `warehouse_id` (select de bodegas activas), `stock` (entrada numérica, mínimo 0) y `expiration_date` (selector de fecha).
 3. Debajo del formulario, una tabla lista todos los lotes existentes con las columnas: Código, Producto, Bodega, Stock, Vencimiento, Estado, Acciones. Cada fila tiene botones de acción: Editar, Switch Activar/Inactivar, Eliminar.
 4. El usuario completa el formulario y hace clic en "Guardar".
-5. El frontend valida: `code` es obligatorio, no vacío después de trim, máximo 60 caracteres (entrada bloqueada a 60); `product_id` y `warehouse_id` son obligatorios; `stock` es obligatorio y mayor o igual a 0; `expiration_date` es obligatoria y posterior a la fecha actual.
-6. El backend valida: unicidad de `code` (insensible a mayúsculas/minúsculas), elimina espacios al inicio y al final, existencia de `product_id` y `warehouse_id`, `stock` >= 0, `expiration_date` futura. Si es válido, crea el registro con `created_by` de la sesión, `created_at` = hora del servidor, `status` = true.
+5. El frontend valida: `name` es obligatorio, no vacío después de trim, máximo 120 caracteres (entrada bloqueada a 120); `product_id` y `warehouse_id` son obligatorios; `stock` es obligatorio y mayor o igual a 0; `expiration_date` es obligatoria y posterior a la fecha actual.
+6. El backend valida: unicidad de `name` (insensible a mayúsculas/minúsculas), elimina espacios al inicio y al final, existencia de `product_id` y `warehouse_id`, `stock` >= 0, `expiration_date` futura. Si es válido, crea el registro con `created_by` de la sesión, `created_at` = hora del servidor, `status` = true.
 7. El sistema retorna respuesta de éxito. La tabla se refresca mostrando el nuevo registro. El formulario se reinicia.
 
 ### Editar
 1. El usuario hace clic en "Editar" en una fila de lote.
-2. El formulario superior se precarga con los valores actuales: `code`, `product_id`, `warehouse_id`, `stock`, `expiration_date` y `status`.
+2. El formulario superior se precarga con los valores actuales: `name`, `product_id`, `warehouse_id`, `stock`, `expiration_date` y `status`.
 3. El usuario modifica los campos y hace clic en "Guardar".
 4. Aplican las mismas reglas de validación. El backend actualiza `updated_by` y `updated_at`.
 5. La tabla se refresca mostrando el registro actualizado.
@@ -144,12 +144,12 @@ Estos estados son COMPUTADOS en tiempo de consulta por el backend de HU-02. No s
 
 | # | Escenario | Comportamiento del Sistema |
 |---|---|---|
-| SP-01 | El usuario envía con `code` vacío o solo espacios | El frontend resalta el campo como obligatorio, muestra el mensaje: "El campo código es obligatorio". El backend también valida. |
-| SP-02 | `code` excede 60 caracteres | La entrada se bloquea a 60 caracteres en el frontend. El backend retorna error de validación 422 si de alguna forma se excede. |
-| SP-03 | `code` ya existe (insensible a mayúsculas/minúsculas) | El backend retorna HTTP 409 Conflict. El frontend muestra error visual: "El código de lote ya existe". |
+| SP-01 | El usuario envía con `name` vacío o solo espacios | El frontend resalta el campo como obligatorio, muestra el mensaje: "El campo código es obligatorio". El backend también valida. |
+| SP-02 | `name` excede 120 caracteres | La entrada se bloquea a 120 caracteres en el frontend. El backend retorna error de validación 422 si de alguna forma se excede. |
+| SP-03 | `name` ya existe (insensible a mayúsculas/minúsculas) | El backend retorna HTTP 409 Conflict. El frontend muestra error visual: "El código de lote ya existe". |
 | SP-04 | Error de conexión a la base de datos al guardar | El frontend muestra: "No es posible establecer conexión con el servidor, intente nuevamente". |
-| SP-05 | El usuario edita y borra `code` | Mismo comportamiento que SP-01. |
-| SP-06 | El usuario edita `code` a uno que ya existe | Mismo comportamiento que SP-03. |
+| SP-05 | El usuario edita y borra `name` | Mismo comportamiento que SP-01. |
+| SP-06 | El usuario edita `name` a uno que ya existe | Mismo comportamiento que SP-03. |
 | SP-07 | Otro usuario eliminó/inactivó el lote mientras el usuario actual lo edita | El backend detecta que el registro ya no existe o cambió de estado. Retorna error. El frontend muestra: "No es posible realizar esta acción, recargue la página". |
 | SP-08 | El usuario intenta eliminar un lote ya eliminado | Igual que SP-07: "No es posible realizar esta acción, recargue la página". |
 | SP-09 | El usuario intenta inactivar un lote ya inactivado | Igual que SP-07: "No es posible realizar esta acción, recargue la página". |
@@ -166,16 +166,16 @@ Estos estados son COMPUTADOS en tiempo de consulta por el backend de HU-02. No s
 | # | Caso | Comportamiento del Sistema |
 |---|---|---|
 | CL-01 | `stock` = 0 | Permitido. El lote existe pero no tiene unidades. Puede eliminarse o inactivarse. |
-| CL-02 | `code` con espacios al inicio/final (ej. "  LOTE-A001  ") | El frontend y el backend recortan solo los espacios al inicio y al final (los espacios internos se conservan). La validación se ejecuta después del trim. |
-| CL-03 | `code` con caracteres acentuados, ñ, guiones, números, paréntesis | Permitido (ej. "Lote N°3 – Medicamentos Controlados"). |
+| CL-02 | `name` con espacios al inicio/final (ej. "  LOTE-A001  ") | El frontend y el backend recortan solo los espacios al inicio y al final (los espacios internos se conservan). La validación se ejecuta después del trim. |
+| CL-03 | `name` con caracteres acentuados, ñ, guiones, números, paréntesis | Permitido (ej. "Lote N°3 – Medicamentos Controlados"). |
 | CL-04 | Códigos que difieren solo por mayúsculas/minúsculas (ej. "LOTE-A001" vs "lote-a001") | Tratados como duplicados (insensible a mayúsculas). El backend retorna 409. |
-| CL-05 | Dos usuarios crean un lote con el mismo `code` simultáneamente | Ambos pasan la validación del frontend. El primero tiene éxito. El segundo recibe 409 del backend: "El código de lote ya existe". |
+| CL-05 | Dos usuarios crean un lote con el mismo `name` simultáneamente | Ambos pasan la validación del frontend. El primero tiene éxito. El segundo recibe 409 del backend: "El código de lote ya existe". |
 | CL-06 | El usuario abre la edición del mismo lote en varias pestañas y guarda cambios diferentes | El primer guardado tiene éxito y actualiza la BD. Los guardados posteriores reciben error: "No es posible realizar esta acción, recargue la página". |
 | CL-07 | No existen lotes | La tabla muestra: "No hay lotes registrados". |
 | CL-08 | `expiration_date` = exactamente hoy | Rechazado. Debe ser estrictamente posterior a la fecha actual (>= no es válido). |
 | CL-09 | Múltiples lotes para el mismo producto en distintas bodegas | Permitido. Cada combinación producto+bodega+código es un lote independiente. |
-| CL-10 | Mismo producto + misma bodega + distinto `code` | Permitido. El sistema permite múltiples lotes del mismo producto en la misma bodega siempre que el `code` sea único. |
-| CL-11 | Mismo producto + misma bodega + mismo `code` | Rechazado por la validación de unicidad global de `code`. |
+| CL-10 | Mismo producto + misma bodega + distinto `name` | Permitido. El sistema permite múltiples lotes del mismo producto en la misma bodega siempre que el `name` sea único. |
+| CL-11 | Mismo producto + misma bodega + mismo `name` | Rechazado por la validación de unicidad global de `name`. |
 | CL-12 | `stock` = 0 y el usuario intenta eliminar | El soft delete procede normalmente. |
 | CL-13 | Lote inactivo con `stock` > 0 | Posible si el stock fue cargado antes de inactivar? No: la inactivación está bloqueada si `stock` > 0. Si el stock se carga después de inactivo, queda inactivo con stock (estado inconsistente a evitar; la UI/UX no permite agregar stock a un lote inactivo). |
 | CL-14 | Producto o bodega seleccionados son inactivos/eliminaron mientras el usuario completa el formulario | El backend valida que existan y estén activos; si no, retorna 422. |
@@ -184,9 +184,9 @@ Estos estados son COMPUTADOS en tiempo de consulta por el backend de HU-02. No s
 
 | # | Caso | Comportamiento del Sistema |
 |---|---|---|
-| CE-01 | El usuario pega JSON, HTML o scripts en `code` | Se rechaza/sanitiza. El `code` permite: letras (incluyendo acentos y ñ), dígitos, espacios, guiones, paréntesis y símbolos de grado. No permite HTML, scripts, ni emojis. |
-| CE-02 | El usuario escribe solo emojis como `code` | El frontend restringe la entrada; los emojis no son aceptados. |
-| CE-03 | El usuario envía `code` compuesto solo por espacios | Después del trim se trata como vacío → mismo comportamiento que SP-01. |
+| CE-01 | El usuario pega JSON, HTML o scripts en `name` | Se rechaza/sanitiza. El `name` permite: letras (incluyendo acentos y ñ), dígitos, espacios, guiones, paréntesis y símbolos de grado. No permite HTML, scripts, ni emojis. |
+| CE-02 | El usuario escribe solo emojis como `name` | El frontend restringe la entrada; los emojis no son aceptados. |
+| CE-03 | El usuario envía `name` compuesto solo por espacios | Después del trim se trata como vacío → mismo comportamiento que SP-01. |
 | CE-04 | Doble clic rápido en "Guardar" | El botón de envío se deshabilita mientras la solicitud está en progreso (se muestra spinner de carga). |
 | CE-05 | El usuario manipula el frontend para enviar `stock` como número decimal o string no numérico | El frontend restringe a enteros; el backend valida tipo y retorna 422 si se evade. |
 | CE-06 | El usuario envía `expiration_date` en formato inválido (ej. "2025-13-45") | El frontend y el backend rechazan el formato; se muestra error de validación. |
@@ -197,7 +197,7 @@ Estos estados son COMPUTADOS en tiempo de consulta por el backend de HU-02. No s
 
 ### CA-01: Crear Lote (Camino Feliz)
 **Dado** que el usuario está en la pantalla de Lotes  
-**Cuando** el usuario completa un `code` válido y único (1–60 caracteres, recortado), selecciona `product_id` y `warehouse_id` válidos, ingresa `stock` >= 0 y una `expiration_date` futura, luego hace clic en "Guardar"  
+**Cuando** el usuario completa un `name` válido y único (1–120 caracteres, recortado), selecciona `product_id` y `warehouse_id` válidos, ingresa `stock` >= 0 y una `expiration_date` futura, luego hace clic en "Guardar"  
 **Entonces** el lote se crea con `status=true`, `created_at`=hora actual del servidor, `created_by`=usuario autenticado   PASS / FAIL  
 **Y** se muestra la respuesta de éxito   PASS / FAIL  
 **Y** la tabla inferior se refresca mostrando el nuevo lote   PASS / FAIL  
@@ -217,7 +217,7 @@ Estos estados son COMPUTADOS en tiempo de consulta por el backend de HU-02. No s
 ### CA-04: Editar Lote (Camino Feliz)
 **Dado** que existe un lote  
 **Cuando** el usuario hace clic en "Editar" en la fila de ese lote  
-**Entonces** el formulario superior se precarga con los valores actuales: `code`, `product_id`, `warehouse_id`, `stock`, `expiration_date`   PASS / FAIL  
+**Entonces** el formulario superior se precarga con los valores actuales: `name`, `product_id`, `warehouse_id`, `stock`, `expiration_date`   PASS / FAIL  
 **Y** el usuario puede modificar y guardar, lo que actualiza el registro con `updated_by` y `updated_at`   PASS / FAIL  
 **Y** la tabla se refresca mostrando los datos actualizados   PASS / FAIL
 
@@ -247,20 +247,20 @@ Estos estados son COMPUTADOS en tiempo de consulta por el backend de HU-02. No s
 
 ### CA-09: Validar Código Obligatorio
 **Dado** que el usuario está completando el formulario de lote  
-**Cuando** el usuario envía con `code` vacío o solo espacios (después de trim)  
+**Cuando** el usuario envía con `name` vacío o solo espacios (después de trim)  
 **Entonces** el frontend resalta el campo   PASS / FAIL  
 **Y** muestra: "El campo código es obligatorio"   PASS / FAIL  
 **Y** el registro NO se guarda   PASS / FAIL
 
 ### CA-10: Validar Código Duplicado
 **Dado** que ya existe un lote llamado "LOTE-A001"  
-**Cuando** el usuario intenta crear o editar un lote con `code` "lote-a001" (o "Lote-A001")  
+**Cuando** el usuario intenta crear o editar un lote con `name` "lote-a001" (o "Lote-A001")  
 **Entonces** el backend retorna HTTP 409   PASS / FAIL  
 **Y** el frontend muestra: "El código de lote ya existe"   PASS / FAIL
 
 ### CA-11: Validar Longitud del Código
 **Dado** que el usuario está completando el formulario de lote  
-**Cuando** el usuario escribe más de 60 caracteres en `code`  
+**Cuando** el usuario escribe más de 120 caracteres en `name`  
 **Entonces** la entrada bloquea más caracteres en 60   PASS / FAIL  
 **Y** si una solicitud evade la validación del frontend, el backend retorna HTTP 422   PASS / FAIL
 
@@ -289,8 +289,8 @@ Estos estados son COMPUTADOS en tiempo de consulta por el backend de HU-02. No s
 **Y** el usuario no puede disparar un segundo envío   PASS / FAIL
 
 ### CA-16: Sanitizar Entrada Maliciosa
-**Dado** que el usuario pega contenido HTML, JSON o script en `code`  
-**Entonces** la entrada es rechazada o sanitizada (el `code` permite: letras (incluyendo acentos y ñ), dígitos, espacios, guiones, paréntesis y símbolos de grado; no permite HTML, scripts, ni emojis)   PASS / FAIL
+**Dado** que el usuario pega contenido HTML, JSON o script en `name`  
+**Entonces** la entrada es rechazada o sanitizada (el `name` permite: letras (incluyendo acentos y ñ), dígitos, espacios, guiones, paréntesis y símbolos de grado; no permite HTML, scripts, ni emojis)   PASS / FAIL
 
 ### CA-17: Editar sin Cambios
 **Dado** que el usuario hace clic en "Editar" en un lote y no realiza modificaciones  
@@ -298,13 +298,13 @@ Estos estados son COMPUTADOS en tiempo de consulta por el backend de HU-02. No s
 **Entonces** los campos `updated_by` y `updated_at` del registro se actualizan   PASS / FAIL
 
 ### CA-18: Recortar Entrada
-**Dado** que el usuario escribe "  LOTE-A001  " como `code`  
+**Dado** que el usuario escribe "  LOTE-A001  " como `name`  
 **Cuando** se envía el formulario  
 **Entonces** el valor se recorta a "LOTE-A001" antes de la validación y persistencia   PASS / FAIL  
 **Y** los espacios internos se conservan   PASS / FAIL
 
 ### CA-19: Caracteres Especiales Permitidos
-**Dado** que el usuario escribe "Lote N°3 – Medicamentos Controlados (Cadena Frío)" como `code`  
+**Dado** que el usuario escribe "Lote N°3 – Medicamentos Controlados (Cadena Frío)" como `name`  
 **Entonces** el código es aceptado y guardado   PASS / FAIL
 
 ### CA-20: Confirmación Requerida para Eliminar
@@ -367,7 +367,7 @@ Estos estados son COMPUTADOS en tiempo de consulta por el backend de HU-02. No s
 ### CA-29: Listar Lotes con Producto, Bodega, Stock y Vencimiento
 **Dado** que existen lotes en el sistema  
 **Cuando** el usuario navega a la pantalla de Lotes  
-**Entonces** la tabla muestra en cada fila: el `code` del lote, el nombre del producto, el nombre de la bodega, el `stock`, la `expiration_date` y el `status`   PASS / FAIL
+**Entonces** la tabla muestra en cada fila: el `name` del lote, el nombre del producto, el nombre de la bodega, el `stock`, la `expiration_date` y el `status`   PASS / FAIL
 
 ### CA-30: Filtro Derivado "Con stock"
 **Dado** lotes en el sistema  

@@ -12,8 +12,8 @@ No se crean nuevas tablas. Esta HU consulta las siguientes tablas existentes med
 
 | Tabla | Columnas relevantes | Rol en la consulta |
 |---|---|---|
-| `lots` | `id`, `code`, `stock`, `expiration_date`, `product_id`, `bodega_id`, `status`, `deleted_at` | Tabla principal; aquí viven el stock y la fecha de vencimiento del lote. |
-| `products` | `id`, `cum`, `name`, `barcode`, `invima`, `group_id`, `unit_id`, `status`, `deleted_at` | Datos del producto (CUM, nombre, código de barras, registro Invima). |
+| `lots` | `id`, `name`, `stock`, `expiration_date`, `product_id`, `warehouse_id`, `status`, `deleted_at` | Tabla principal; aquí viven el stock y la fecha de vencimiento del lote. La columna `name` es el código del lote. |
+| `products` | `id`, `cum`, `name`, `barcode`, `invima_registration`, `group_id`, `unit_id`, `status`, `deleted_at` | Datos del producto (CUM, nombre, código de barras, registro Invima). |
 | `bodegas` | `id`, `name`, `status`, `deleted_at` | Nombre de la bodega donde se ubica el lote. |
 | `groups` | `id`, `name`, `status`, `deleted_at` | Clasificación/grupo del producto. |
 | `units` | `id`, `name`, `status`, `deleted_at` | Unidad de medida del producto. |
@@ -21,7 +21,7 @@ No se crean nuevas tablas. Esta HU consulta las siguientes tablas existentes med
 **Notas de modelo:**
 - Solo se incluyen registros activos: `status = true` y `deleted_at IS NULL` en `bodegas`, `groups`, `products`, `units` y `lots`.
 - El campo `lots.expiration_date` determina el estado del lote y la alerta de expiración.
-- Los campos `cum`, `name`, `barcode`, `invima` pertenecen a la tabla `products`.
+- Los campos `cum`, `name`, `barcode`, `invima_registration` pertenecen a la tabla `products`.
 - La consulta inicia desde `lots` y realiza INNER JOIN con `products`, `bodegas`, `groups` y `units`.
 
 ## 3. Bloqueos y Dependencias
@@ -193,7 +193,7 @@ No se crean nuevas tablas. Esta HU consulta las siguientes tablas existentes med
 ### CA-04: Filtrar por bodega
 **Dado** que existen lotes en diferentes bodegas  
 **Cuando** el usuario selecciona una bodega del filtro y hace clic en "Buscar"  
-**Entonces** la tabla muestra solo los lotes cuyo `bodega_id` corresponde a la bodega seleccionada  PASS / FAIL
+**Entonces** la tabla muestra solo los lotes cuyo `warehouse_id` corresponde a la bodega seleccionada  PASS / FAIL
 
 ### CA-05: Filtrar por grupo
 **Dado** que existen productos en diferentes grupos  
@@ -203,7 +203,7 @@ No se crean nuevas tablas. Esta HU consulta las siguientes tablas existentes med
 ### CA-06: Filtrar por lote
 **Dado** que existen lotes con diferentes códigos  
 **Cuando** el usuario selecciona un código de lote del filtro y hace clic en "Buscar"  
-**Entonces** la tabla muestra solo los lotes cuyo `lots.code` coincide exactamente con el seleccionado  PASS / FAIL
+**Entonces** la tabla muestra solo los lotes cuyo `lots.name` (código de lote) coincide exactamente con el seleccionado  PASS / FAIL
 
 ### CA-07: Filtrar por estado "Con stock"
 **Dado** que existen lotes con `stock > 0` y lotes con `stock = 0`  

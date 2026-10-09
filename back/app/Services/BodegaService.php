@@ -72,6 +72,9 @@ class BodegaService
      */
     private function hasActiveLots(Bodega $bodega): bool
     {
-        return $bodega->lots()->exists();
+        // HU-03: lotes con status = true y deleted_at IS NULL.
+        return $bodega->lots()
+            ->where('status', true)
+            ->exists();
     }       
 }

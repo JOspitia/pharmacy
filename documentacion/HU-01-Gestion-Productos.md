@@ -4,7 +4,7 @@
 
 **Título:** HU-01 – Gestión de Productos
 
-**Descripción:** Permitir al usuario gestionar productos farmacéuticos mediante un CRUD completo (crear, listar, editar, eliminar con soft delete). La pantalla contiene un formulario de registro en la parte superior y una tabla de productos en la parte inferior. No incluye activación/inactivación; el único mecanismo de retiro es soft delete, bloqueado cuando el producto tiene stock activo en lotes.
+**Descripción:** Permitir al usuario gestionar productos farmacéuticos mediante un CRUD completo (crear, listar, editar, activar/inactivar, eliminar con soft delete). La pantalla contiene un formulario de registro en la parte superior y una tabla de productos en la parte inferior. El retiro de un producto se puede realizar mediante inactivación (alternar `status`) o mediante soft delete; ambas operaciones están bloqueadas cuando el producto tiene stock activo en lotes.
 
 ## 2. Modelo de Datos
 
@@ -13,14 +13,16 @@ Tabla: `products`
 | Columna | Tipo | Restricciones |
 |---|---|---|
 | id | uuid | PK, autogenerado por el sistema (lado del servidor/BD) |
-| name | varchar(120) | UNIQUE, NOT NULL, unicidad insensible a mayúsculas/minúsculas |
-| cum | varchar(60) | UNIQUE, NOT NULL, unicidad insensible a mayúsculas/minúsculas |
+| name | varchar(100) | UNIQUE, NOT NULL, unicidad insensible a mayúsculas/minúsculas |
+| cum | varchar(30) | UNIQUE, NOT NULL, unicidad insensible a mayúsculas/minúsculas |
 | barcode | varchar(60) | UNIQUE, permite nulo, opcional |
 | invima_registration | varchar(60) | UNIQUE, NOT NULL, unicidad insensible a mayúsculas/minúsculas |
 | group_id | uuid | FK → groups (id), NOT NULL, onDelete RESTRICT |
 | unit_id | uuid | FK → units (id), NOT NULL, onDelete RESTRICT |
-| created_by | uuid | FK → users (id), NOT NULL, onDelete RESTRICT |
-| updated_by | uuid | FK → users (id), permite nulo, onDelete SET NULL |
+| description | text | permite nulo, máximo 300 caracteres |
+| status | boolean | NOT NULL, valor por defecto true (true=Activo, false=Inactivo) |
+| created_by | bigint | FK → users (id), NOT NULL, onDelete RESTRICT |
+| updated_by | bigint | FK → users (id), permite nulo, onDelete SET NULL |
 | created_at | timestamp | NOT NULL, asignado automáticamente por Eloquent |
 | updated_at | timestamp | permite nulo, asignado automáticamente por Eloquent |
 | deleted_at | timestamp | permite nulo (SoftDeletes) |
@@ -30,8 +32,9 @@ Tabla adicional creada en esta HU: `units`
 | Columna | Tipo | Restricciones |
 |---|---|---|
 | id | uuid | PK, autogenerado por el sistema |
-| name | varchar(60) | UNIQUE, NOT NULL |
-| description | text | permite nulo |
+| name | varchar(50) | NOT NULL |
+| abbreviation | varchar(10) | NOT NULL, se usa como valor único del seeder |
+| status | boolean | DEFAULT true, permite filtrar el selector por unidades activas |
 | created_at | timestamp | NOT NULL, asignado automáticamente por Eloquent |
 | updated_at | timestamp | permite nulo, asignado automáticamente por Eloquent |
 
@@ -104,8 +107,8 @@ Tabla de referencia: `groups`
 
 ### Listar y Crear
 1. El usuario navega a la pantalla "Productos".
-2. El sistema muestra un formulario de registro en la parte superior con los campos: `name` (texto, alfanumérico, máximo 120 caracteres), `cum` (texto, máximo 60 caracteres), `barcode` (texto opcional, máximo 60 caracteres), `invima_registration` (texto, máximo 60 caracteres), `group_id` (select que muestra solo grupos activos) y `unit_id` (select que muestra todas las unidades).
-3. Debajo del formulario, una tabla lista los productos existentes con las columnas: Nombre, CUM, Código Barras, Invima, Grupo, Unidad, Acciones (Editar, Eliminar). No se incluye switch de activar/inactivar.
+2. El sistema muestra un formulario de registro en la parte superior con los campos: `name` (texto, alfanumérico, máximo 100 caracteres), `cum` (texto, máximo 30 caracteres), `barcode` (texto opcional, máximo 60 caracteres), `invima_registration` (texto, máximo 60 caracteres), `group_id` (select que muestra solo grupos activos), `unit_id` (select que muestra solo unidades activas) y `description` (texto opcional, máximo 300 caracteres).
+3. Debajo del formulario, una tabla lista los productos existentes con las columnas: Nombre, CUM, Código Barras, Invima, Grupo, Unidad, Estado, Acciones (Editar, Eliminar). La columna Estado muestra un indicador interactivo que permite activar/inactivar el producto.
 4. El usuario completa el formulario y hace clic en "Guardar".
 5. El frontend valida: `name`, `cum` e `invima_registration` son obligatorios, no vacíos después de trim, y respetan sus longitudes máximas; `barcode` es opcional; `group_id` y `unit_id` están seleccionados.
 6. El backend valida: unicidad de `name`, `cum`, `barcode` (solo si se envía) e `invima_registration` (insensible a mayúsculas/minúsculas), elimina espacios al inicio y al final de todos los campos de texto, convierte `barcode` vacío o solo espacios a `null`. Si es válido, crea el registro con `created_by` de la sesión, `created_at` = hora del servidor.
@@ -121,6 +124,13 @@ Tabla de referencia: `groups`
 ### Editar sin cambios
 1. El usuario hace clic en "Editar", no realiza cambios y hace clic en "Guardar".
 2. El sistema actualiza `updated_by` y `updated_at` (no hay bloqueo de "sin cambios detectados").
+
+### Activar/Inactivar
+1. El usuario hace clic en el indicador de estado de una fila de producto.
+2. El sistema muestra un diálogo de confirmación.
+3. Si el usuario confirma Y el producto NO tiene lotes con stock > 0 y `status = true` → se alterna el campo `status` y se persiste. La tabla se refresca.
+4. Si el producto tiene lotes con stock > 0 y `status = true` → el sistema bloquea la acción con el mensaje: "No se puede inactivar, el producto tiene stock activo en uno o más lotes".
+5. Un producto inactivo (`status = false`) no aparece en el selector de productos del formulario de lotes (HU-05), pero sí permanece visible en la tabla de productos.
 
 ### Eliminar (soft delete)
 1. El usuario hace clic en "Eliminar" en una fila de producto.
@@ -145,7 +155,7 @@ Tabla de referencia: `groups`
 | SP-02 | El usuario envía con `cum` vacío o solo espacios | El frontend resalta el campo como obligatorio, muestra el mensaje: "El campo CUM es obligatorio". El backend también valida. |
 | SP-03 | El usuario envía con `invima_registration` vacío o solo espacios | El frontend resalta el campo como obligatorio, muestra el mensaje: "El campo registro Invima es obligatorio". El backend también valida. |
 | SP-04 | El usuario envía con `barcode` vacío | Permitido; el campo es opcional y se almacena como `null`. |
-| SP-05 | `name` supera 120 caracteres | La entrada se bloquea a 120 caracteres en el frontend. El backend retorna error de validación 422 si de alguna forma se excede. |
+| SP-05 | `name` supera 100 caracteres | La entrada se bloquea a 100 caracteres en el frontend. El backend retorna error de validación 422 si de alguna forma se excede. |
 | SP-06 | `cum` ya existe (insensible a mayúsculas/minúsculas) | El backend retorna HTTP 409 Conflict. El frontend muestra error visual: "El CUM ya existe". |
 | SP-07 | `barcode` ya existe (solo si se ingresó un valor) | El backend retorna HTTP 409 Conflict. El frontend muestra error visual: "El código de barras ya existe". |
 | SP-08 | `invima_registration` ya existe (insensible a mayúsculas/minúsculas) | El backend retorna HTTP 409 Conflict. El frontend muestra error visual: "El registro Invima ya existe". |
@@ -157,6 +167,9 @@ Tabla de referencia: `groups`
 | SP-14 | El usuario intenta eliminar un producto ya eliminado | Igual que SP-12: "No es posible realizar esta acción, recargue la página". |
 | SP-15 | El usuario hace doble clic en "Guardar" | El botón de envío se deshabilita mientras la solicitud está en progreso (se muestra spinner de carga). |
 | SP-16 | `name` ya existe (insensible a mayúsculas/minúsculas) | El backend retorna HTTP 409 Conflict. El frontend muestra error visual: "El nombre del producto ya existe". |
+| SP-20 | El usuario intenta inactivar un producto que tiene lotes con stock > 0 | El sistema bloquea la acción con el mensaje: "No se puede inactivar, el producto tiene stock activo en uno o más lotes". |
+| SP-21 | El usuario intenta activar un producto inactivo | La operación procede; el `status` pasa a `true` y la tabla se refresca. No requiere que no existan lotes con stock. |
+| SP-22 | Otro usuario inactivó o activó el producto mientras el usuario actual lo edita | El backend detecta que el estado del registro cambió. Retorna error. El frontend muestra: "No se puede realizar esta acción, recargue la página". |
 | SP-17 | Timeout de red durante la solicitud | El frontend muestra: "La solicitud excedió el tiempo de espera. Verifique su conexión e intente nuevamente." Timeout: 30 segundos. |
 | SP-18 | `barcode` supera 60 caracteres | La entrada se bloquea a 60 caracteres en el frontend. El backend retorna 422 si se excede. |
 | SP-19 | Sesión expirada durante operación | La API retorna 401. El frontend redirige al login con mensaje: "Su sesión ha expirado. Inicie sesión nuevamente." |
@@ -188,7 +201,7 @@ Tabla de referencia: `groups`
 | CE-03 | Enviar un `group_id` o `unit_id` inexistente manipulando la petición | El backend valida que el ID exista y retorna 422 si no es válido. |
 | CE-04 | Interceptar la respuesta del backend y reenviar el mismo payload de creación varias veces | Cada envío se valida por unicidad; los envíos posteriores reciben 409. |
 | CE-05 | Hacer clic repetido en "Eliminar" y confirmar varias veces | Solo la primera solicitud procesa el soft delete; las siguientes reciben SP-12. |
-| CE-06 | Pegar un valor de `cum` o `invima_registration` con 60 espacios al inicio y 60 caracteres válidos | Después del trim el valor excede 60 caracteres → backend retorna 422. |
+| CE-06 | Pegar un valor de `cum` o `invima_registration` con 60 espacios al inicio y más caracteres válidos de los permitidos | Después del trim el valor excede el máximo del campo (30 en `cum`, 60 en `invima_registration`) → backend retorna 422. |
 | CE-07 | Modificar el campo `created_by` desde una herramienta de desarrollo al enviar el formulario | El backend ignora cualquier `created_by` enviado y lo toma de la sesión autenticada. |
 | CE-08 | Navegar directamente a la página 9999 cuando solo hay 3 páginas | El backend retorna lista vacía o última página válida según paginador de Laravel. |
 
@@ -293,14 +306,14 @@ Tabla de referencia: `groups`
 
 ### CA-16: Validar Longitud del Nombre
 **Dado** que el usuario está completando el formulario de producto  
-**Cuando** el usuario escribe más de 120 caracteres en `name`  
-**Entonces** la entrada bloquea más caracteres en 120  PASS / FAIL  
+**Cuando** el usuario escribe más de 100 caracteres en `name`  
+**Entonces** la entrada bloquea más caracteres en 100  PASS / FAIL  
 **Y** si una solicitud evade la validación del frontend, el backend retorna HTTP 422  PASS / FAIL
 
 ### CA-17: Validar Longitud del CUM
 **Dado** que el usuario está completando el formulario de producto  
-**Cuando** el usuario escribe más de 60 caracteres en `cum`  
-**Entonces** la entrada bloquea más caracteres en 60  PASS / FAIL  
+**Cuando** el usuario escribe más de 30 caracteres en `cum`  
+**Entonces** la entrada bloquea más caracteres en 30  PASS / FAIL  
 **Y** si una solicitud evade la validación del frontend, el backend retorna HTTP 422  PASS / FAIL
 
 ### CA-18: Error de Conexión a la Base de Datos
@@ -370,12 +383,12 @@ Tabla de referencia: `groups`
 ### CA-29: Tabla Units Creada por Migración
 **Dado** que se ejecutan las migraciones de esta HU  
 **Cuando** se verifica el esquema de la base de datos  
-**Entonces** existe la tabla `units` con las columnas `id`, `name`, `description`, `created_at` y `updated_at`  PASS / FAIL
+**Entonces** existe la tabla `units` con las columnas `id`, `name`, `abbreviation`, `status`, `created_at` y `updated_at`  PASS / FAIL
 
 ### CA-30: Seeder de Units Puebla Datos
 **Dado** que se ejecutan los seeders en cualquier entorno  
 **Cuando** se consulta la tabla `units`  
-**Entonces** existen al menos las siguientes unidades base: Unidad, Tableta, Cápsula, Mililitro, Gramo, Frasco, Ampolla, Sobre  PASS / FAIL
+**Entonces** existen las siguientes 7 unidades base: Tableta (Tab), Cápsula (Cap), Mililitro (ml), Gramo (g), Frasco (Fras), Ampolla (Amp), Caja (Caj)  PASS / FAIL
 
 ### CA-31: Select de Grupos Muestra Solo Activos
 **Dado** que existen grupos activos e inactivos en el sistema  
@@ -398,3 +411,26 @@ Tabla de referencia: `groups`
 **Cuando** el usuario escribe más de 60 caracteres en `barcode`  
 **Entonces** la entrada bloquea más caracteres en 60  PASS / FAIL  
 **Y** si una solicitud evade la validación del frontend, el backend retorna HTTP 422  PASS / FAIL
+
+### CA-35: Activar/Inactivar Producto sin Stock Activo
+**Dado** que existe un producto y NO tiene lotes con stock > 0 y `status = true`  
+**Cuando** el usuario hace clic en el indicador de estado y confirma el diálogo  
+**Entonces** el campo `status` se alterna y persiste  PASS / FAIL  
+**Y** la tabla se refresca mostrando el nuevo estado  PASS / FAIL
+
+### CA-36: Bloquear Inactivación con Stock Activo
+**Dado** que existe un producto y TIENE al menos un lote con `stock > 0` y `status = true`  
+**Cuando** el usuario intenta inactivarlo  
+**Entonces** el sistema NO cambia el `status`  PASS / FAIL  
+**Y** muestra: "No se puede inactivar, el producto tiene stock activo en uno o más lotes"  PASS / FAIL
+
+### CA-37: Producto Inactivo No Aparece en el Selector de Lotes
+**Dado** que existe un producto con `status = false`  
+**Cuando** el usuario abre el selector de productos del formulario de lotes (HU-05)  
+**Entonces** el producto NO aparece en las opciones  PASS / FAIL
+
+### CA-38: Producto Creado Queda Activo por Defecto
+**Dado** que el usuario crea un producto desde el formulario  
+**Cuando** el registro persiste  
+**Entonces** `status` queda en `true`  PASS / FAIL  
+**Y** el campo `status` NO se envía desde el formulario; su valor proviene del default de la base de datos y solo se modifica mediante el endpoint de alternancia de estado  PASS / FAIL
