@@ -3,6 +3,7 @@
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\BodegaController;
 use App\Http\Controllers\GroupController;
 
 /*
@@ -33,4 +34,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('groups/search', [GroupController::class, 'search']);
     Route::patch('groups/{group}/toggle-status', [GroupController::class, 'toggleStatus']);
     Route::apiResource('groups', GroupController::class);
+
+    // Bodegas
+    Route::patch('bodegas/{bodega}/toggle-status', [BodegaController::class, 'toggleStatus']);
+    Route::apiResource('bodegas', BodegaController::class);
 });
