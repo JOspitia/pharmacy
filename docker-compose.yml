@@ -1,0 +1,81 @@
+# Orquestacion de la prueba tecnica.
+#
+#   docker compose up --build
+#
+# Resultado:
+#   Frontend  http://localhost:5173
+#   Backend   http://localhost:8000
+#   MySQL     localhost:3306
+#
+# La base es MySQL 8 y no el SQL Server que se uso en el desarrollo local.
+# Motivo tecnico: en MySQL el operador LIKE es insensible a mayusculas por
+# defecto, que es justo lo que exige la busqueda del reporte de inventario
+# (HU-02). En PostgreSQL el operador LIKE es sensible a mayusculas y habria que
+# usar ILIKE, que la documentacion menciona pero el codigo nunca implemento.
+# El resto del SQL del proyecto (LOWER(...), whereDate, paginate) es portable.
+
+services:
+  db:
+    image: mysql:8.0
+    container_name: pharmacy-db
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: farmacia
+      MYSQL_USER: farmacia
+      MYSQL_PASSWORD: farmacia
+      MYSQL_ROOT_PASSWORD: root
+    ports:
+      - "3306:3306"
+    volumes:
+      - db_data:/var/lib/mysql
+    healthcheck:
+      # Sin esto el backend podria intentar migrar antes de que MySQL acepte
+      # conexiones y fallar en el primer arranque.
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-ufarmacia", "-pfarmacia"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    networks:
+      - pharmacy
+
+  backend:
+    build:
+      context: ./back
+      dockerfile: Dockerfile
+    container_name: pharmacy-backend
+    restart: unless-stopped
+    env_file:
+      - ./back/.env.docker
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - pharmacy
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: pharmacy-frontend
+    restart: unless-stopped
+    environment:
+      # Destino del proxy de /api. Dentro de la red de Docker el backend no es
+      # localhost sino el nombre del servicio.
+      VITE_API_TARGET: "http://backend:8000"
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+    networks:
+      - pharmacy
+
+volumes:
+  db_data:
+    driver: local
+
+networks:
+  pharmacy:
+    driver: bridge

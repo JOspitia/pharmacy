@@ -1,0 +1,18 @@
+# Dependencias instaladas por el host: la imagen las reinstala con npm ci.
+node_modules/
+
+# Artefactos de compilacion.
+dist/
+.vite/
+
+# Configuracion local y metadatos del editor.
+.env
+.env.local
+.vscode/
+.idea/
+
+# No hacen falta dentro de la imagen para servir la SPA en modo desarrollo.
+README.md
+eslint.config.js
+skills-lock.json
+*.log

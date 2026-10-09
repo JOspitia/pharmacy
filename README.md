@@ -17,30 +17,62 @@ Sistema de gestión de almacenes (bodegas), productos farmacéuticos, lotes e in
 - **Laravel 9**: Framework PHP para la API REST.
 - **PHP 8.0.2+**: Lenguaje de programación del servidor.
 - **Laravel Sanctum 3**: Autenticación basada en tokens.
-- **SQL Server Express**: Base de datos relacional.
+- **MySQL 8**: Base de datos relacional (la imagen oficial en Docker).
+
+---
+
+## Inicio rápido con Docker (recomendado)
+
+Levanta frontend, backend y base de datos sin instalar PHP ni Node en el equipo:
+
+```bash
+docker compose up --build
+```
+
+| Servicio | URL |
+|---|---|
+| Frontend | http://localhost:5173 |
+| Backend (API) | http://localhost:8000 |
+| MySQL | `localhost:3306` |
+
+La primera vez tarda varios minutos porque compila las imágenes. Las
+migraciones y los seeders se ejecutan solos al arrancar el backend.
+
+Para detener y borrar también el volumen de la base:
+
+```bash
+docker compose down -v
+```
+
+### Variables de entorno
+
+El backend dentro de Docker usa `back/.env.docker`, que está versionado porque
+solo contiene una clave de desarrollo. No es un archivo de secretos.
 
 ---
 
 ## Requisitos Previos
+
+La instalación manual (sin Docker) requiere:
 
 ### Para el Frontend
 - **Node.js** v18+ (versión recomendada por Vite).
 - **npm** v9+.
 
 ### Para el Backend
-- **PHP 8.0.2+** con extensiones: `pdo_sqlsrv`, `sqlsrv`, `mbstring`, `openssl`, `tokenizer`.
+- **PHP 8.0.2+** con extensiones: `pdo_mysql`, `mbstring`, `openssl`, `tokenizer`.
 - **Composer** (gestor de dependencias de PHP).
-- **SQL Server Express** (o cualquier edición de SQL Server compatible con el driver `sqlsrv`).
+- **MySQL 8** (local o el contenedor del compose).
 
 ---
 
-## Instalación y Ejecución
+## Instalación y Ejecución (sin Docker)
 
 ### Backend (Laravel)
 
 1. **Clonar el repositorio e ingresar al backend**
    ```bash
-   git clone https://github.com/JOspitia/prueba-tecnica-johan-ospitia.git
+   git clone https://github.com/JOspitia/pharmacy.git
    cd back
    ```
 
@@ -53,36 +85,35 @@ Sistema de gestión de almacenes (bodegas), productos farmacéuticos, lotes e in
    ```bash
    # En Windows (PowerShell o CMD):
    copy .env.example .env
+   # En Linux/macOS:
+   cp .env.example .env
    ```
-   Edita el archivo `.env` con tus credenciales de base de datos:
-   ```env
-   DB_CONNECTION=sqlsrv
-   DB_HOST=localhost\SQLEXPRESS
-   DB_PORT=1433
-   DB_DATABASE=PruebaTecnicaDB
-   DB_USERNAME=prueba_owner
-   DB_PASSWORD=123456
-   ```
+   El archivo ya viene con los valores de la base de MySQL y una clave de
+   desarrollo, así que funciona sin editarlo. Si usas otra base de datos, cambia
+   las variables `DB_*`.
+
+   > `back/.env.example` y `back/.env.docker` son el mismo archivo con una única
+   > diferencia: `DB_HOST`. Aquí apunta a `127.0.0.1` (MySQL local) y en el
+   > `.env.docker` apunta a `db` (el servicio del compose).
 
 4. **Generar la Application Key**
    ```bash
    php artisan key:generate
    ```
 
-5. **Preparar la Base de Datos (Dos Opciones)**
+5. **Preparar la Base de Datos**
 
-   * **Opción A (Recomendada - Migraciones de Laravel):**
-     ```bash
-     php artisan migrate
-     php artisan db:seed --class=AdminUserSeeder
-     php artisan db:seed --class=UnitSeeder
-     ```
-     > Los seeders crean las unidades de medida base y el usuario administrador de prueba (`admin` / `password`).
+   Las migraciones de Laravel son la fuente de verdad del esquema:
+   ```bash
+   php artisan migrate --seed
+   ```
+   Los seeders crean el usuario administrador de prueba (`admin` / `password`) y las
+   7 unidades de medida base.
 
-   * **Opción B (Restaurar desde Script SQL):**
-     Si prefieres no usar las migraciones, puedes importar directamente el script completo de SQL Server ubicado en:
-     [`db/scripts.sql`](./db/scripts.sql) en tu manejador de base de datos (SSMS - SQL Server Management Studio) para crear la base de datos, tablas, índices, llaves foráneas y el usuario de base de datos.
-     *(Nota: Si usas esta opción, de igual forma puedes ejecutar los seeders del paso anterior si necesitas generar datos iniciales de prueba en Laravel, o insertar directamente datos de prueba en la BD).*
+   > **Sobre `db/scripts.sql`:** ese archivo es un volcado generado desde SQL Server
+   > durante el desarrollo original y está **obsoleto**. Contiene rutas de Windows
+   > y sintaxis específica de ese motor, por lo que no funciona con MySQL ni dentro
+   > de Docker. Se conserva únicamente como registro histórico.
 
 6. **Iniciar el servidor**
    ```bash
@@ -261,6 +292,37 @@ Una vez iniciados ambos entornos, puedes validar las siguientes funcionalidades:
 5. **Lotes**: CRUD con estados derivados: *Con stock*, *Por vencer (≤30 días)*, *Vencido*.
 6. **Sensores**: CRUD, asignación a bodegas, cambio de estado y visualización en modal.
 7. **Reportes**: Reporte de inventario exportable a Excel.
+
+---
+
+## Supuestos Tomados
+
+Decisiones que no estaban definidas en el enunciado y que se tomaron por criterio propio.
+
+| # | Supuesto | Motivo |
+|---|---|---|
+| 1 | **La base de datos es MySQL 8**, no SQL Server. | El desarrollo original usó SQL Server, pero en MySQL el operador `LIKE` es insensible a mayúsculas por defecto, que es lo que exige la búsqueda del reporte (HU-02). El SQL del proyecto es portable: `LOWER(...)`, `whereDate` y `paginate` funcionan igual en ambos motores. |
+| 2 | **El backend se sirve con `php artisan serve`**, no con nginx + php-fpm. | Evita depender de un servidor web adicional y de su configuración para una evaluación. Para producción lo indicado sería nginx o Apache con PHP-FPM. |
+| 3 | **El frontend se sirve con el servidor de desarrollo de Vite**, no con los archivos compilados de `dist/`. | Permite evaluarlo sin paso de build. Para producción se ejecuta `npm run build` y se sirve el contenido de `dist/`. |
+| 4 | **`back/.env.docker` está versionado.** | Solo contiene una clave de desarrollo y credenciales de la base local del compose. No hay secretos reales. |
+| 5 | **La columna `code` del lote se llama `name` en la base de datos.** | Los HUs la denominan `code`, pero la interfaz la muestra como "Código". Se documenta la discrepancia en `HU-05`. |
+| 6 | **Un lote ya vencido se puede editar** siempre que no se cambie su fecha de vencimiento. | `LotResource` define "Vencido" como un estado legítimo del dominio. Bloquear la edición completa haría esos registros inmodificables. |
+| 7 | **Producto y bodega no se pueden inactivar si tienen stock activo**, pero sí bloquear el guardado del lote. | Coherente con la regla de cascada usada en los demás módulos (grupo → producto, bodega → lote). |
+
+---
+
+## Funcionalidad No Entregada
+
+Por priorización de tiempo dentro del plazo de 72 horas, quedó fuera:
+
+| Funcionalidad | Estado | Motivo |
+|---|---|---|
+| **Traslados entre bodegas** | No implementado | Es la funcionalidad más grande no entregada: requiere tabla de movimientos, dos endpoints (solicitar y confirmar traslado), validación de stock en origen y destino, y su pantalla. Se priorizó un núcleo de inventarios por lote que funcionara correctamente y estuviera documentado. |
+| **Dispensación de medicamentos** | Parcial | El control de stock por lote está completo (crear, editar stock, estados derivados, alertas de vencimiento). No hay registro de dispensing ni decremento automático de stock por venta o entrega. |
+| **Suite de tests automatizados** | Mínima | Solo se conservan los stubs de ejemplo de Laravel. No se escribieron pruebas unitarias ni de feature. Es la carencia más relevante del entregable. |
+
+`db/scripts.sql` es un volcado obsoleto de SQL Server del desarrollo original. Está
+documentado arriba y no debe usarse.
 
 ---
 

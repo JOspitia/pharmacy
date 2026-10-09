@@ -1,0 +1,31 @@
+# Dependencias instaladas por el host: la imagen las reinstala con composer install.
+vendor/
+node_modules/
+
+# Configuracion local con credenciales reales de la maquina del desarrollador.
+# El contenedor usa .env.docker, que si se versiona.
+.env
+.env.*
+!.env.docker
+.env.example
+
+# Artefactos de compilacion y cache.
+public/build/
+public/hot
+storage/logs/*
+storage/framework/cache/*
+storage/framework/sessions/*
+storage/framework/views/*
+bootstrap/cache/*.php
+node_modules/.vite/
+
+# Herramientas de desarrollo y control de versiones.
+.phpunit.result.cache
+.php-cs-fixer.cache
+tests/CurlRequest/
+.vscode/
+.idea/
+
+# Documentacion que no necesita estar dentro de la imagen.
+README.md
+phpunit.xml
