@@ -69,13 +69,20 @@ Sistema de gestión de almacenes (bodegas), productos farmacéuticos, lotes e in
    php artisan key:generate
    ```
 
-5. **Ejecutar migraciones y seeders**
-   ```bash
-   php artisan migrate
-   php artisan db:seed --class=AdminUserSeeder
-   php artisan db:seed --class=UnitSeeder
-   ```
-   > Los seeders crean las unidades de medida base y el usuario administrador de prueba.
+5. **Preparar la Base de Datos (Dos Opciones)**
+
+   * **Opción A (Recomendada - Migraciones de Laravel):**
+     ```bash
+     php artisan migrate
+     php artisan db:seed --class=AdminUserSeeder
+     php artisan db:seed --class=UnitSeeder
+     ```
+     > Los seeders crean las unidades de medida base y el usuario administrador de prueba (`admin` / `password`).
+
+   * **Opción B (Restaurar desde Script SQL):**
+     Si prefieres no usar las migraciones, puedes importar directamente el script completo de SQL Server ubicado en:
+     [`db/scripts.sql`](./db/scripts.sql) en tu manejador de base de datos (SSMS - SQL Server Management Studio) para crear la base de datos, tablas, índices, llaves foráneas y el usuario de base de datos.
+     *(Nota: Si usas esta opción, de igual forma puedes ejecutar los seeders del paso anterior si necesitas generar datos iniciales de prueba en Laravel, o insertar directamente datos de prueba en la BD).*
 
 6. **Iniciar el servidor**
    ```bash
