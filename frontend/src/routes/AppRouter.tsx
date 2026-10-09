@@ -11,6 +11,7 @@ import { AppLayout } from '../components/AppLayout'
 import { Login } from '../pages/Login'
 import { Home } from '../pages/Home'
 import { GroupsList, GroupFormModal } from '../pages/Groups'
+import { WarehouseFormModal, WarehousesList } from '../pages/Warehouse'
 
 /**
  * PrivateLayout - Layout para rutas privadas
@@ -57,10 +58,24 @@ const router = createBrowserRouter([
 					{ path: ':id/edit', element: <GroupFormModal /> },
 				]
 			},
+			{
+				path: '/bodegas',
+				children: [
+					{ index: true, element: <WarehousesList /> },
+					{ path: 'new', element: <WarehouseFormModal /> },
+					{ path: ':id/edit', element: <WarehouseFormModal /> },
+				]
+			},
 			// Ruta de redirección a la ruta base de inicio
 			{ path: '/', element: <Navigate to="/Home" replace /> },
 			// Ruta de redirección a la ruta base de inicio para rutas no encontradas
 			{ path: '*', element: <Navigate to="/" replace /> },
+		],
+	},
+	{
+		element: <PublicLayout />,
+		children: [
+			{ path: '/login', element: <Login /> },
 		],
 	}
 ])
