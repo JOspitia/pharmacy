@@ -103,29 +103,41 @@ jobs:
         uses: actions/checkout@v4
 
       # Los runners de GitHub comparten IP y Docker Hub limita las descargas
-      # anonimas con HTTP 429. mirror.gcr.io es un espejo del mismo contenido
-      # sin ese limite.
+      # anonimas con HTTP 429. mirror.gcr.io sirve el mismo contenido sin ese
+      # limite. Se imprime la configuracion para saber si quedo aplicada.
       - name: Configurar espejo de imagenes
         run: |
           sudo tee /etc/docker/daemon.json > /dev/null <<'EOF'
           { "registry-mirrors": ["https://mirror.gcr.io"] }
           EOF
           sudo systemctl restart docker
+          sleep 3
+          docker info | grep -A3 "Registry Mirrors" || echo "AVISO: sin espejo activo"
 
       - name: Validar configuracion de compose
         run: docker compose config --quiet
 
-      - name: Construir imagen del backend
-        run: docker build --tag pharmacy-backend:ci ./back
-
-      - name: Construir imagen del frontend
-        run: docker build --tag pharmacy-frontend:ci ./frontend
+      # Docker Hub puede responder 429 incluso con el espejo configurado, asi
+      # que la descarga se reintenta antes de construir nada.
+      - name: Descargar imagenes base
+        run: |
+          for intento in 1 2 3 4 5 6; do
+            if docker compose pull --quiet; then
+              echo "Imagenes descargadas en el intento $intento"
+              exit 0
+            fi
+            echo "Limite de descargas alcanzado, reintento $intento en 30s"
+            sleep 30
+          done
+          echo "No se pudieron descargar las imagenes base tras 6 intentos"
+          exit 1
 
       - name: Levantar el stack completo
+        run: docker compose up -d --build
+
+      # El backend espera la base y aplica migraciones y seeders al arrancar.
+      - name: Esperar al backend
         run: |
-          docker compose up -d --build
-          # El backend espera la base y aplica migraciones y seeders al
-          # arrancar. Se espera a que responda antes de probar el login.
           listo=false
           for intento in $(seq 1 30); do
             codigo=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8000/api/login || true)
@@ -140,12 +152,13 @@ jobs:
 
           if [ "$listo" != "true" ]; then
             echo "El backend no respondio a tiempo"
-            docker compose logs backend --tail 100
             exit 1
           fi
 
-          # El login debe devolver un token: sin el AdminUserSeeder no habria
-          # forma de entrar y el seed seria un fallo silencioso.
+      # El login debe devolver un token: sin el AdminUserSeeder no habria
+      # forma de entrar y el seed seria un fallo silencioso.
+      - name: Verificar login
+        run: |
           respuesta=$(curl -s -X POST http://localhost:8000/api/login \
             -H 'Content-Type: application/json' \
             -H 'Accept: application/json' \
