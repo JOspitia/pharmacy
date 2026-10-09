@@ -8,7 +8,7 @@
  *   - js-cache-storage: tokenStorage.get() cacheado a nivel de api.ts
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { ApiError, apiFetch } from '../lib/api'
 
 /**
@@ -39,9 +39,6 @@ export function useApi<T>(path: string | null, deps: unknown[] = []): UseApiResu
 
   // Estado para manejar el loading
   const [isLoading, setIsLoading] = useState<boolean>(Boolean(path))
-
-  // Ref para forzar refetch (no causa re-render)
-  const refetchRef = useRef(0)
 
   /**
    * Función que realiza la petición a la API
@@ -78,6 +75,11 @@ export function useApi<T>(path: string | null, deps: unknown[] = []): UseApiResu
       // Setea el estado de loading a false
       setIsLoading(false)
     }
+  // El hook acepta un array de dependencias de longitud variable, asi que
+    // el array de dependencias de useCallback no puede ser un literal. Sin esto
+    // el callback se recrearia en cada render y el efecto de abajo se
+    // ejecutaria infinitamente.
+    // eslint-disable-next-line react-hooks/use-memo
   }, [path, ...deps])
 
   /**
@@ -85,13 +87,12 @@ export function useApi<T>(path: string | null, deps: unknown[] = []): UseApiResu
    */
   useEffect(() => {
     void fetchData()
-  }, [fetchData, refetchRef.current])
+  }, [fetchData])
 
   /**
    * Función para refetch
    */
   const refetch = useCallback(() => {
-    refetchRef.current += 1
     void fetchData()
   }, [fetchData])
 

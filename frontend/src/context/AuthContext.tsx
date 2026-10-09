@@ -52,6 +52,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Efecto para cargar el usuario si existe token
   useEffect(() => {
     if (token) {
+      // Todos los setState de loadUser ocurren despues de un await, asi que
+      // no son sincronicos y no disparan un render en cascada. La regla
+      // react-hooks/set-state-in-effect no distingue ese caso porque no puede
+      // seguir el limite del await.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       void loadUser()
     }
   }, [token, loadUser])

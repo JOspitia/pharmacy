@@ -1,0 +1,148 @@
+name: CI
+
+# Se ejecuta en cada push a main y en cada Pull Request hacia main.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancela ejecuciones anteriores del mismo ref si llega una version nueva.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend (Laravel)
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: back
+
+    steps:
+      - name: Descargar codigo
+        uses: actions/checkout@v4
+
+      - name: Configurar PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          # Solo las extensiones que el proyecto usa de verdad. Sin GD ni
+          # others de mas: lo minimo necesario hace el job mas rapido.
+          extensions: pdo_mysql, mbstring, bcmath, intl, zip
+          coverage: none
+
+      - name: Validar composer.json
+        run: composer validate --strict
+
+      - name: Instalar dependencias
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Verificar sintaxis PHP
+        run: |
+          errores=0
+          while IFS= read -r archivo; do
+            php -l "$archivo" > /dev/null || errores=1
+          done < <(find app database routes config tests -name '*.php' -type f)
+          if [ "$errores" -ne 0 ]; then
+            echo "Hay archivos con errores de sintaxis"
+            exit 1
+          fi
+          echo "Sintaxis correcta en todos los archivos PHP"
+
+      - name: Ejecutar pruebas
+        run: php artisan test
+
+  frontend:
+    name: Frontend (React)
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Descargar codigo
+        uses: actions/checkout@v4
+
+      - name: Configurar Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Verificar tipos (TypeScript)
+        run: npx tsc --noEmit -p tsconfig.app.json
+
+      - name: Analizar codigo (ESLint)
+        run: npm run lint
+
+      - name: Construir para produccion
+        run: npm run build
+
+  docker:
+    name: Docker (imagenes)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Descargar codigo
+        uses: actions/checkout@v4
+
+      - name: Validar configuracion de compose
+        run: docker compose config --quiet
+
+      - name: Construir imagen del backend
+        run: docker build --tag pharmacy-backend:ci ./back
+
+      - name: Construir imagen del frontend
+        run: docker build --tag pharmacy-frontend:ci ./frontend
+
+      - name: Levantar el stack completo
+        run: |
+          docker compose up -d --build
+          # El backend espera la base y aplica migraciones y seeders al
+          # arrancar. Se espera a que responda antes de probar el login.
+          listo=false
+          for intento in $(seq 1 30); do
+            codigo=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8000/api/login || true)
+            if [ "$codigo" = "405" ] || [ "$codigo" = "422" ]; then
+              echo "El backend responde (HTTP $codigo)"
+              listo=true
+              break
+            fi
+            echo "Esperando al backend... intento $intento"
+            sleep 5
+          done
+
+          if [ "$listo" != "true" ]; then
+            echo "El backend no respondio a tiempo"
+            docker compose logs backend --tail 100
+            exit 1
+          fi
+
+          # El login debe devolver un token: sin el AdminUserSeeder no habria
+          # forma de entrar y el seed seria un fallo silencioso.
+          respuesta=$(curl -s -X POST http://localhost:8000/api/login \
+            -H 'Content-Type: application/json' \
+            -H 'Accept: application/json' \
+            -d '{"name":"admin","password":"password"}')
+          echo "$respuesta"
+
+          case "$respuesta" in
+            *'"token"'*) echo "Login correcto" ;;
+            *) echo "El login no devolvio token"; exit 1 ;;
+          esac
+
+      - name: Logs del backend en caso de fallo
+        if: failure()
+        run: docker compose logs backend --tail 100
+
+      - name: Apagar el stack
+        if: always()
+        run: docker compose down -v

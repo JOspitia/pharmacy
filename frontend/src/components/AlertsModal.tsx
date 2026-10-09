@@ -1,7 +1,7 @@
 /**
  * AlertsModal — Modal de alertas de sensores de una bodega específica.
  */
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Modal, Table, Tag } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { useApi } from '../hooks/useApi'
@@ -92,10 +92,15 @@ function alertLabel(type: string): string {
 export function AlertsModal({ open, onClose, warehouseId, warehouseName }: AlertsModalProps) {
   const [page, setPage] = useState(1)
 
-  // Resetear a página 1 cuando cambia la bodega o se abre el modal
-  useEffect(() => {
+  // Volver a la pagina 1 cuando se abre el modal o cambia la bodega.
+  // React documenta ajustar estado durante el render para este caso: hacerlo
+  // dentro de un useEffect produce un segundo ciclo de render, que es
+  // justamente lo que la regla react-hooks/set-state-in-effect previene.
+  const [prevContexto, setPrevContexto] = useState({ open, warehouseId })
+  if (prevContexto.open !== open || prevContexto.warehouseId !== warehouseId) {
+    setPrevContexto({ open, warehouseId })
     if (open) setPage(1)
-  }, [open, warehouseId])
+  }
 
   /**
    * Hook para cargar alertas de la bodega
