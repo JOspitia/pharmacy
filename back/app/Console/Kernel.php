@@ -8,23 +8,24 @@ use Illuminate\Foundation\Console\Kernel as ConsoleKernel;
 class Kernel extends ConsoleKernel
 {
     /**
-     * Define the application's command schedule.
+     * Define la programación de tareas de la aplicación.
      *
      * @param  \Illuminate\Console\Scheduling\Schedule  $schedule
      * @return void
      */
-    protected function schedule(Schedule $schedule)
+    protected function schedule(Schedule $schedule): void
     {
-        // $schedule->command('inspire')->hourly();
+        // Ejecutar el Comando: readings:generate cada minuto
+        $schedule->command('readings:generate')->everyMinute();
     }
 
     /**
-     * Register the commands for the application.
+     * Registrar comandos de la aplicación.
      *
      * @return void
      */
-    protected function commands()
-    {
+    protected function commands(): void
+    {   
         $this->load(__DIR__.'/Commands');
 
         require base_path('routes/console.php');
