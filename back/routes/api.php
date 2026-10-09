@@ -7,6 +7,7 @@ use App\Http\Controllers\BodegaController;
 use App\Http\Controllers\GroupController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\UnitController;
+use App\Http\Controllers\LotController;
 
 /*
 |--------------------------------------------------------------------------
@@ -49,4 +50,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('products/form-data', [ProductController::class, 'formData']);
     Route::patch('products/{product}/toggle-status', [ProductController::class, 'toggleStatus']);
     Route::apiResource('products', ProductController::class);
+
+    // Lotes
+    Route::get('lots/form-data', [LotController::class, 'formData']);
+    Route::patch('lots/{lot}/toggle-status', [LotController::class, 'toggleStatus']);
+    Route::apiResource('lots', LotController::class);
 });
