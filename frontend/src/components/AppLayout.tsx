@@ -10,6 +10,7 @@
 import { Layout, Menu, Button, theme } from 'antd'
 import {
   AppstoreOutlined,
+  BarChartOutlined,
   DatabaseOutlined,
   InboxOutlined,
   ShoppingOutlined,
@@ -44,6 +45,7 @@ const navItems: NavItem[] = [
   { key: '3', label: 'Bodegas', icon: <DatabaseOutlined />, path: '/bodegas' },
   { key: '4', label: 'Productos', icon: <ShoppingOutlined />, path: '/products' },
   { key: '5', label: 'Lotes', icon: <InboxOutlined />, path: '/lots' },
+  { key: '6', label: 'Reporte Inventario', icon: <BarChartOutlined />, path: '/reports/inventory' },
 ]
 
 /**

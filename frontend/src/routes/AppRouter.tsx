@@ -14,6 +14,7 @@ import { GroupsList, GroupFormModal } from '../pages/Groups'
 import { WarehouseFormModal, WarehousesList } from '../pages/Warehouse'
 import { ProductFormModal, ProductsList } from '../pages/Products'
 import { LotFormModal, LotsList } from '../pages/Lots'
+import { ReportProducts } from '../pages/Reports'
 
 /**
  * PrivateLayout - Layout para rutas privadas
@@ -84,7 +85,7 @@ const router = createBrowserRouter([
 					{ path: ':id/edit', element: <LotFormModal /> },
 				]
 			},
-			// Ruta de redirección a la ruta base de inicio
+			{ path: '/reports/inventory', element: <ReportProducts /> },
 			{ path: '/', element: <Navigate to="/Home" replace /> },
 			// Ruta de redirección a la ruta base de inicio para rutas no encontradas
 			{ path: '*', element: <Navigate to="/" replace /> },
