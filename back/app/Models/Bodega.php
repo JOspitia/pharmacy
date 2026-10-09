@@ -4,10 +4,10 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Str;
-use Illuminate\Database\Eloquent\Relations\HasMany;
-use App\Models\Lot;
 
 /**
  * Modelo de bodega
@@ -19,7 +19,7 @@ class Bodega extends Model
 
     // Definir el tipo de dato de la clave primaria
     protected $keyType = 'string';
-    
+
     // Deshabilitar el incremento automático
     public $incrementing = false;
 
@@ -41,14 +41,34 @@ class Bodega extends Model
     protected $attributes = [
         'status' => true,
     ];
+    
+    // Relaciones
+    public function lots(): HasMany
+    {
+        return $this->hasMany(Lot::class);
+    }
 
-    /** 
-     * Definir qué pasa con la bodega al crear o actualizar
-     */
+    public function sensors(): HasMany
+    {
+        return $this->hasMany(Sensor::class, 'warehouse_id');
+    }
+
+    public function createdBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function updatedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'updated_by');
+    }
+
+    // Definir qué pasa con la bodega al crear o actualizar
     protected static function booted(): void
     {
         // Al crear una bodega, generar UUID y obtener el usuario autenticado
-        static::creating(function (Bodega $bodega): void {
+        static::creating(function (Bodega $bodega): void
+        {
             if (empty($bodega->{$bodega->getKeyName()})) {
                 $bodega->{$bodega->getKeyName()} = (string) Str::uuid();
             }
@@ -58,18 +78,12 @@ class Bodega extends Model
         });
 
         // Obtener el usuario autenticado y actualizar el campo updated_by
-        static::updating(function (Bodega $bodega): void {
+        static::updating(function (Bodega $bodega): void
+        {
             if (auth()->check()) {
                 $bodega->updated_by = auth()->id();
             }
         });
     }
 
-    /**
-     * Relación con lotes
-     */
-    public function lots(): HasMany
-    {
-        return $this->hasMany(Lot::class);
-    }
 }

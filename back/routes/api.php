@@ -8,6 +8,8 @@ use App\Http\Controllers\GroupController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\UnitController;
 use App\Http\Controllers\LotController;
+use App\Http\Controllers\SensorController;
+use App\Http\Controllers\ReadingController;
 
 /*
 |--------------------------------------------------------------------------
@@ -55,4 +57,13 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('lots/form-data', [LotController::class, 'formData']);
     Route::patch('lots/{lot}/toggle-status', [LotController::class, 'toggleStatus']);
     Route::apiResource('lots', LotController::class);
+
+    // Sensores
+    Route::get('sensors/form-data', [SensorController::class, 'formData']);
+    Route::patch('sensors/{sensor}/toggle-status', [SensorController::class, 'toggleStatus']);
+    Route::apiResource('sensors', SensorController::class);
+
+    // Lecturas
+    Route::get('bodegas/{bodega}/readings', [ReadingController::class, 'index']);
+    Route::get('bodegas/{bodega}/alerts', [ReadingController::class, 'alerts']);
 });
