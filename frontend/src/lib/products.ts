@@ -1,8 +1,20 @@
 /**
- * Tipos del módulo de Productos (HU-01 backend).
- * Mantener sincronizados con app/Http/Resources/ProductResource.php del backend.
+ * Interfaz que define las propiedades del producto
+ * @param id - ID del producto
+ * @param name - Nombre del producto
+ * @param cum - Código Único de Medicamento del producto
+ * @param barcode - Código de barras del producto
+ * @param invima_registration - Registro Invima del producto
+ * @param description - Descripción del producto
+ * @param status - Estado del producto
+ * @param group_id - ID del grupo del producto
+ * @param unit_id - ID de la unidad del producto
+ * @param group - Grupo del producto
+ * @param unit - Unidad del producto
+ * @param created_at - Fecha de creación del producto
+ * @param updated_at - Fecha de actualización del producto
+ * @param deleted_at - Fecha de eliminación del producto
  */
-
 export interface Product {
   id: string
   name: string
@@ -20,6 +32,16 @@ export interface Product {
   deleted_at: string | null
 }
 
+/**
+ * Interfaz que define las propiedades del payload del producto
+ * @param name - Nombre del producto
+ * @param cum - Código Único de Medicamento del producto
+ * @param barcode - Código de barras del producto
+ * @param invima_registration - Registro Invima del producto
+ * @param description - Descripción del producto
+ * @param group_id - ID del grupo del producto
+ * @param unit_id - ID de la unidad del producto
+ */
 export interface ProductPayload {
   name: string
   cum: string
@@ -30,6 +52,11 @@ export interface ProductPayload {
   unit_id: string
 }
 
+/**
+ * Interfaz que define las propiedades de la respuesta del backend para una lista de productos
+ * @param data - Array de productos
+ * @param meta - Metadatos de la paginación
+ */
 export interface ProductListResponse {
   data: Product[]
   meta?: {
@@ -40,10 +67,19 @@ export interface ProductListResponse {
   }
 }
 
+/**
+ * Interfaz que define las propiedades de la respuesta del backend para un producto
+ * @param data - Producto
+ */
 export interface ProductResponse {
   data: Product
 }
 
+/**
+ * Interfaz que define las propiedades de la respuesta del backend para un formulario de productos
+ * @param groups - Array de grupos
+ * @param units - Array de unidades
+ */
 export interface FormDataResponse {
   groups: { id: string; name: string }[]
   units: { id: string; name: string; abbreviation?: string }[]

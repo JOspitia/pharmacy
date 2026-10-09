@@ -1,6 +1,12 @@
 /**
- * Interfaz que define las propiedades de la bodega.
- * Mantener sincronizado con app/Http/Resources/BodegaResource.php del backend.
+ * Interfaz que define las propiedades de la bodega
+ * @param id - ID de la bodega
+ * @param name - Nombre de la bodega
+ * @param description - Descripción de la bodega
+ * @param status - Estado de la bodega
+ * @param created_at - Fecha de creación de la bodega
+ * @param updated_at - Fecha de actualización de la bodega
+ * @param deleted_at - Fecha de eliminación de la bodega
  */
 export interface Warehouse {
     id: string
@@ -13,8 +19,10 @@ export interface Warehouse {
 }
 
 /**
- * Interfaz que define las propiedades de la carga útil del grupo
- * @param name - Nombre del grupo
+ * Interfaz que define las propiedades de la carga útil de la bodega
+ * @param name - Nombre de la bodega
+ * @param description - Descripción de la bodega
+ * @param status - Estado de la bodega
  */
 export interface WarehousePayload {
     name: string
@@ -23,9 +31,9 @@ export interface WarehousePayload {
 }
 
 /**
- * Interface que define las propiedades de la respuesta de la lista de grupos
- * @param data - Datos de la lista de grupos
- * @param meta - Metadatos de la lista de grupos
+ * Interfaz que define las propiedades de la respuesta de la lista de bodegas
+ * @param data - Datos de la lista de bodegas
+ * @param meta - Metadatos de la lista de bodegas
  */
 export interface WarehouseListResponse {
     data: Warehouse[]
@@ -38,8 +46,8 @@ export interface WarehouseListResponse {
 }
 
 /**
- * Interfaz que define las propiedades de la respuesta del grupo
- * @param data - Datos del grupo
+ * Interfaz que define las propiedades de la respuesta de la bodega
+ * @param data - Datos de la bodega
  */
 export interface WarehouseResponse {
     data: Warehouse

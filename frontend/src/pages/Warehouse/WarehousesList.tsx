@@ -4,14 +4,16 @@
  */
 
 import { useMemo, useState } from 'react'
-import { Button, Input, Space, Table, Tag, Popconfirm, message } from 'antd'
+import { Button, Input, Space, Table, Tag, Tooltip, Popconfirm, message } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
-import { EditOutlined, DeleteOutlined, ReloadOutlined } from '@ant-design/icons'
+import { EditOutlined, DeleteOutlined, ReloadOutlined, ExperimentOutlined, AlertOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import { useApi } from '../../hooks/useApi'
 import { apiFetch } from '../../lib/api'
 import { ErrorAlert } from '../../components/ErrorAlert'
 import { LoadingScreen } from '../../components/LoadingScreen'
+import { SensorsModal } from '../../components/SensorsModal'
+import { AlertsModal, type AlertListResponse } from '../../components/AlertsModal'
 import type { Warehouse, WarehouseListResponse } from '../../lib/warehouses'
 
 /**
@@ -24,6 +26,16 @@ export function WarehousesList() {
   const [page, setPage] = useState(1)
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [sensorsModal, setSensorsModal] = useState<{
+    open: boolean
+    warehouseId: string
+    warehouseName: string
+  }>({ open: false, warehouseId: '', warehouseName: '' })
+  const [alertsModal, setAlertsModal] = useState<{
+    open: boolean
+    warehouseId: string
+    warehouseName: string
+  }>({ open: false, warehouseId: '', warehouseName: '' })
 
   /**
    * Efecto para debouncing de la búsqueda.
@@ -134,9 +146,33 @@ export function WarehousesList() {
     {
       title: 'Acciones',
       key: 'actions',
-      width: 160,
+      width: 260,
       render: (_: unknown, record: Warehouse) => (
         <Space>
+          <AlertButton
+            warehouseId={record.id}
+            onClick={() =>
+              setAlertsModal({
+                open: true,
+                warehouseId: record.id,
+                warehouseName: record.name,
+              })
+            }
+          />
+          <Tooltip title="Ver sensores">
+            <Button
+              type="text"
+              icon={<ExperimentOutlined />}
+              onClick={() =>
+                setSensorsModal({
+                  open: true,
+                  warehouseId: record.id,
+                  warehouseName: record.name,
+                })
+              }
+            />
+          </Tooltip>
+
           <Button
             type="text"
             icon={<EditOutlined />}
@@ -219,6 +255,52 @@ export function WarehousesList() {
         }}
         locale={{ emptyText: 'No hay bodegas registradas' }}
       />
+
+      <SensorsModal
+        open={sensorsModal.open}
+        onClose={() => setSensorsModal({ open: false, warehouseId: '', warehouseName: '' })}
+        warehouseId={sensorsModal.warehouseId}
+        warehouseName={sensorsModal.warehouseName}
+      />
+
+      <AlertsModal
+        open={alertsModal.open}
+        onClose={() => setAlertsModal({ open: false, warehouseId: '', warehouseName: '' })}
+        warehouseId={alertsModal.warehouseId}
+        warehouseName={alertsModal.warehouseName}
+      />
     </>
+  )
+}
+
+/**
+ * Componente que muestra un botón indicando las alertas activas en la bodega
+ * @param warehouseId - ID de la bodega
+ * @param onClick - Función que se ejecuta al hacer clic en el botón
+ * @returns {JSX.Element}
+ */
+function AlertButton({ warehouseId, onClick }: { warehouseId: string; onClick: () => void }) {
+  const { data } = useApi<AlertListResponse>(
+    `/api/bodegas/${warehouseId}/alerts`,
+    [warehouseId],
+  )
+  const hasAlerts = (data?.data?.length ?? 0) > 0
+  const count = data?.meta?.total ?? data?.data?.length ?? 0
+
+  return (
+    <Tooltip title={hasAlerts ? `${count} alerta${count !== 1 ? 's' : ''} activa${count !== 1 ? 's' : ''}` : 'Sin alertas'}>
+      <Button
+        type="text"
+        icon={
+          <AlertOutlined
+            style={{
+              color: hasAlerts ? '#e63535' : '#94a3b8',
+              fontSize: 16,
+            }}
+          />
+        }
+        onClick={onClick}
+      />
+    </Tooltip>
   )
 }
