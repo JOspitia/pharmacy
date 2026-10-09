@@ -10,6 +10,7 @@ use App\Http\Controllers\UnitController;
 use App\Http\Controllers\LotController;
 use App\Http\Controllers\SensorController;
 use App\Http\Controllers\ReadingController;
+use App\Http\Controllers\ReportController;
 
 /*
 |--------------------------------------------------------------------------
@@ -66,4 +67,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // Lecturas
     Route::get('bodegas/{bodega}/readings', [ReadingController::class, 'index']);
     Route::get('bodegas/{bodega}/alerts', [ReadingController::class, 'alerts']);
+
+    // Reportes
+    Route::get('reportes/inventario', [ReportController::class, 'index']);
 });
