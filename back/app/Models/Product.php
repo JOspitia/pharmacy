@@ -34,6 +34,7 @@ class Product extends Model
         'created_by',
         'updated_by',
         'status',
+        'requires_authorization',
     ];
 
     // Relaciones
@@ -67,11 +68,13 @@ class Product extends Model
         'unit_id' => 'string',
         'group_id' => 'string',
         'status' => 'boolean',
+        'requires_authorization' => 'boolean',
     ];
 
     // Valores por defecto del modelo antes de guardar en base de datos
     protected $attributes = [
         'status' => true,
+        'requires_authorization' => false,
     ];
 
     // Definir quÃƒÂ© pasa con el grupo al crear o actualizar

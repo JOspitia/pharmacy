@@ -28,6 +28,7 @@ class Bodega extends Model
         'name',
         'description',
         'status',
+        'stock_minimo',
         'created_by',
         'updated_by',
     ];
@@ -35,11 +36,13 @@ class Bodega extends Model
     // Definir el tipo de dato
     protected $casts = [
         'status' => 'boolean',
+        'stock_minimo' => 'integer',
     ];
 
     // Valores por defecto del modelo antes de guardar en base de datos
     protected $attributes = [
         'status' => true,
+        'stock_minimo' => 0,
     ];
     
     // Relaciones

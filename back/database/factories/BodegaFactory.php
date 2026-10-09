@@ -22,6 +22,7 @@ class BodegaFactory extends Factory
             // sesion iniciada, cosa que no ocurre en las pruebas.
             'created_by' => User::factory(),
             'status' => true,
+            'stock_minimo' => $this->faker->numberBetween(5, 20),
         ];
     }
 

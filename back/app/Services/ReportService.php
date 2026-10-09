@@ -136,7 +136,7 @@ class ReportService
             case 'por_vencer':
                 $query->where('lots.stock', '>', 0)
                     ->whereDate('lots.expiration_date', '>=', Carbon::today()->toDateString())
-                    ->whereDate('lots.expiration_date', '<=', Carbon::today()->addDays(30)->toDateString());
+                    ->whereDate('lots.expiration_date', '<=', Carbon::today()->addDays(90)->toDateString());
                 break;
 
             case 'vencido':

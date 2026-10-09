@@ -40,4 +40,13 @@ class ProductFactory extends Factory
     {
         return $this->state(fn () => ['status' => false]);
     }
+
+    /**
+     * Producto de control especial. RN-05: requiere autorizacion de regente
+     * para dispensarse.
+     */
+    public function controlEspecial(): static
+    {
+        return $this->state(fn () => ['requires_authorization' => true]);
+    }
 }
