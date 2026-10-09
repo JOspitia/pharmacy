@@ -45,7 +45,7 @@ class Bodega extends Model
     // Relaciones
     public function lots(): HasMany
     {
-        return $this->hasMany(Lot::class);
+        return $this->hasMany(Lot::class, 'warehouse_id');
     }
 
     public function sensors(): HasMany
