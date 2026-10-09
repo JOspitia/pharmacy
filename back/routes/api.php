@@ -2,6 +2,7 @@
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\AuthController;
 use App\Http\Controllers\GroupController;
 
 /*
@@ -15,17 +16,21 @@ use App\Http\Controllers\GroupController;
 |
 */
 
+// Rutas públicas
+Route::post('/login', [AuthController::class, 'login']);
+
+// Rutas protegidas por Sanctum
 Route::middleware('auth:sanctum')->group(function () {
+
     Route::get('/user', function (Request $request) {
         return $request->user();
     });
 
-    // Ruta para buscar grupos por nombre
+    // Autenticación
+    Route::post('/logout', [AuthController::class, 'logout']);
+
+    // Grupos
     Route::get('groups/search', [GroupController::class, 'search']);
-
-    // Ruta para activar/inactivar un grupo
     Route::patch('groups/{group}/toggle-status', [GroupController::class, 'toggleStatus']);
-
-    // Ruta para crud de grupos
     Route::apiResource('groups', GroupController::class);
 });
