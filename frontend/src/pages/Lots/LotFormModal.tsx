@@ -74,8 +74,8 @@ export function LotFormModal() {
     if (lotData?.data && formData) {
       form.setFieldsValue({
         name: lotData.data.name,
-        product_id: lotData.data.product_id,
-        warehouse_id: lotData.data.warehouse_id,
+        product_id: lotData.data.product?.id ?? '',
+        warehouse_id: lotData.data.warehouse?.id ?? '',
         stock: lotData.data.stock,
         expiration_date: lotData.data.expiration_date
           ? dayjs(lotData.data.expiration_date)
@@ -95,8 +95,8 @@ export function LotFormModal() {
     if (lotData?.data && formData) {
       const t = setTimeout(() => {
         form.setFieldsValue({
-          product_id: lotData.data.product_id,
-          warehouse_id: lotData.data.warehouse_id,
+          product_id: lotData.data.product?.id ?? '',
+          warehouse_id: lotData.data.warehouse?.id ?? '',
         })
       }, 50)
       return () => clearTimeout(t)
