@@ -250,3 +250,5 @@ HU-04 (Sensores) ─────────────────────
 5. **Documentar la regla de onDelete como decisión global** en lugar de repetirla en cada HU evitó inconsistencia y demostró pensamiento arquitectónico.
 
 6. **Los subagentes pueden fallar:** tener un plan de contingencia (trabajo inline con advertencia de calidad) permitió continuar sin bloquear el progreso.
+
+7. **Auditoría del README mediante IA:** Validar el README de forma cruzada contra el código fuente (`composer.json`, `package.json`, `.env`) utilizando la IA permitió identificar y corregir discrepancias críticas de stack (como la versión del framework, base de datos en SQL Server y la estructura real de carpetas en el frontend), garantizando que las instrucciones de arranque sean 100% verídicas y alineadas al estado actual del repositorio.
