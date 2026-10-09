@@ -122,21 +122,6 @@ export function LotsList() {
     },
     {
       title: 'Estado',
-      dataIndex: 'derived_status',
-      key: 'derived_status',
-      width: 160,
-      render: (status: string) => {
-        const color =
-          status === 'Con stock' ? 'cyan' :
-          status === 'Sin stock' ? 'default' :
-          status.startsWith('Por vencer') ? 'orange' :
-          status === 'Vencido' ? 'red' :
-          'default'
-        return <Tag color={color}>{status}</Tag>
-      },
-    },
-    {
-      title: '¿Activo?',
       dataIndex: 'status',
       key: 'status',
       width: 100,
