@@ -2,8 +2,12 @@
 # Se elige php:8.2-cli y no nginx + php-fpm porque para la evaluacion se sirve
 # con `php artisan serve`, que evita depender de un servidor web adicional y de
 # su configuracion. Queda registrado como supuesto en el README.
+#
+# mirror.gcr.io/library/ es el espejo gratuito de Docker Hub. Se usa porque
+# Docker Hub limita las descargas anonimas por IP y los runners de GitHub
+# Actions comparten IP, lo que hace fallar el pipeline con HTTP 429.
 
-FROM php:8.2-cli
+FROM mirror.gcr.io/library/php:8.2-cli
 
 # Extensiones que Laravel 9 y el driver MySQL necesitan y que la imagen base
 # no trae compiladas.
@@ -28,7 +32,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Composer binario, copiado desde su propia imagen oficial.
-COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+COPY --from=mirror.gcr.io/library/composer:2 /usr/bin/composer /usr/bin/composer
 
 WORKDIR /var/www/html
 

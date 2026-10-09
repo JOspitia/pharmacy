@@ -2,8 +2,11 @@
 # Se sirve con el servidor de desarrollo de Vite para que el evaluador vea la
 # aplicacion sin necesidad de compilar. Vite exige --host 0.0.0.0 para quedar
 # accesible desde fuera del contenedor.
+#
+# mirror.gcr.io/library/ es el espejo gratuito de Docker Hub, usado para no
+# chocar con el limite de descargas anonimas por IP en GitHub Actions.
 
-FROM node:20-alpine
+FROM mirror.gcr.io/library/node:20-alpine
 
 WORKDIR /app
 

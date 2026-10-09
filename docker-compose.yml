@@ -16,7 +16,18 @@
 
 services:
   db:
-    image: mysql:8.0
+    # La imagen base viene de public.ecr.aws, el espejo de Docker Hub que
+    # publica AWS, y no de Docker Hub directamente.
+    #
+    # Motivo: GitHub Actions ejecuta sobre IP compartidas y Docker Hub limita
+    # las descargas anonimas por IP. Con Docker Hub el pipeline falla de forma
+    # sistematica con HTTP 429, sin importar cuantas veces se reintente.
+    # public.ecr.aws sirve los mismos tags sin ese tope, funciona igual en
+    # Docker Desktop y no requiere autenticacion.
+    #
+    # En los Dockerfiles las imagenes base van con el prefijo
+    # mirror.gcr.io/library/, que es el otro mirror gratuitito de Docker Hub.
+    image: public.ecr.aws/docker/library/mysql:8.0
     container_name: pharmacy-db
     restart: unless-stopped
     environment:

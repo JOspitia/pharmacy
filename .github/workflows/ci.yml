@@ -23,7 +23,7 @@ jobs:
 
     steps:
       - name: Descargar codigo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Configurar PHP
         uses: shivammathur/setup-php@v2
@@ -73,10 +73,10 @@ jobs:
 
     steps:
       - name: Descargar codigo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Configurar Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: '20'
           cache: npm
@@ -100,37 +100,15 @@ jobs:
 
     steps:
       - name: Descargar codigo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
-      # Los runners de GitHub comparten IP y Docker Hub limita las descargas
-      # anonimas con HTTP 429. mirror.gcr.io sirve el mismo contenido sin ese
-      # limite. Se imprime la configuracion para saber si quedo aplicada.
-      - name: Configurar espejo de imagenes
-        run: |
-          sudo tee /etc/docker/daemon.json > /dev/null <<'EOF'
-          { "registry-mirrors": ["https://mirror.gcr.io"] }
-          EOF
-          sudo systemctl restart docker
-          sleep 3
-          docker info | grep -A3 "Registry Mirrors" || echo "AVISO: sin espejo activo"
-
+      # Docker Hub limita las descargas anonimas por IP y los runners de GitHub
+      # Actions comparten IP, asi que un pull directo falla siempre con HTTP
+      # 429 y reintentar no sirve de nada. Por eso el compose y los Dockerfiles
+      # apuntan a mirrors sin ese tope: public.ecr.aws para MySQL y
+      # mirror.gcr.io/library/ para las imagenes base de los builds.
       - name: Validar configuracion de compose
         run: docker compose config --quiet
-
-      # Docker Hub puede responder 429 incluso con el espejo configurado, asi
-      # que la descarga se reintenta antes de construir nada.
-      - name: Descargar imagenes base
-        run: |
-          for intento in 1 2 3 4 5 6; do
-            if docker compose pull --quiet; then
-              echo "Imagenes descargadas en el intento $intento"
-              exit 0
-            fi
-            echo "Limite de descargas alcanzado, reintento $intento en 30s"
-            sleep 30
-          done
-          echo "No se pudieron descargar las imagenes base tras 6 intentos"
-          exit 1
 
       - name: Levantar el stack completo
         run: docker compose up -d --build
