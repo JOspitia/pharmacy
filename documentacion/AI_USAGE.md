@@ -46,6 +46,24 @@ Cada paso se resolvió mediante conversación uno a uno entre el desarrollador y
 
 ---
 
+### 2.1 Validación de Código y Control de Calidad
+
+El proceso de desarrollo no se limitó únicamente a la redacción de Historias de Usuario, sino que incluyó un ciclo riguroso de validación continua entre la documentación y el código implementado, utilizando múltiples modelos de IA de forma complementaria:
+
+* **OpenCode (Go Edition):** Se utilizó la versión Go de OpenCode ([https://opencode.ai/docs/es/go](https://opencode.ai/docs/es/go)) como entorno base para la ejecución de validaciones.
+* **Agente Jarvis (Auditor de Cumplimiento):** El agente Jarvis fue empleado estratégicamente para cruzar y comparar el código fuente desarrollado contra los Criterios de Aceptación (CAs) documentados en los archivos `.md`. Su función principal fue actuar como un orquestador de validación, encargado de:
+    * Verificar el cumplimiento estricto de las reglas de negocio (ej. bloqueos de eliminación, validaciones de stock).
+    * Auditar los estándares de calidad del código (nomenclatura, convenciones de Eloquent, tipado en TypeScript).
+    * Detectar discrepancias o "novedades" entre lo que dictaba la HU y lo que ejecutaba el código.
+* **Modelo Gentle AI:** Para el análisis y sugerencia de correcciones ante errores o excepciones de código, se recurrió adicionalmente al modelo Gentle AI ([https://github.com/Gentleman-Programming/gentle-ai](https://github.com/Gentleman-Programming/gentle-ai)), aportando una segunda capa de revisión técnica especializada.
+
+**Flujo de resolución de novedades:**
+1.  **Detección:** El agente orquestador (Jarvis/OpenCode) analiza el código y notifica al usuario si existe una desviación respecto a la HU o un error de compilación/ejecución.
+2.  **Análisis:** Se revisa la notificación y se apoya en los modelos para entender la causa raíz (ej. errores de hidratación de componentes, excepciones de SQL).
+3.  **Ejecución Manual:** Una vez identificada la acción de mejora, el desarrollador aplica la corrección manual en el código fuente, garantizando el control total sobre la lógica implementada y asegurando que la solución se alinee con la arquitectura global del sistema.
+
+---
+
 ## 3. Sistema de subagentes especializados
 
 Para evitar saturación del contexto y mantener la calidad del análisis, se utilizó un sistema de delegación a subagentes especializados:
