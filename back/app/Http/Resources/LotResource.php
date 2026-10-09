@@ -21,6 +21,7 @@ class LotResource extends JsonResource
             'id'          => $this->id,
             'name'        => $this->name,
             'expiration_date' => $this->expiration_date,
+            'stock' => $this->stock,
             'product' => $this->relationLoaded('product') && $this->product
                 ? (new ProductResource($this->product))->only(['id', 'name'])
                 : null,
