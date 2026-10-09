@@ -10,12 +10,24 @@ use Illuminate\Http\Resources\Json\JsonResource;
  */
 class GroupResource extends JsonResource
 {
+    protected array $fields = [];
+
+
+    /**
+     * Solo obtener campos específicos
+     */
+    public function only(array $fields): self
+    {
+        $this->fields = $fields;
+        return $this;
+    }
+
     /**
      * Transformar el recurso en un array.
      */
     public function toArray($request): array
     {
-        return [
+        $data =  [
             'id'          => $this->id,
             'name'        => $this->name,
             'description' => $this->description,
@@ -25,5 +37,13 @@ class GroupResource extends JsonResource
             'created_at'  => $this->created_at ? $this->created_at->toIso8601String() : null,
             'updated_at'  => $this->updated_at ? $this->updated_at->toIso8601String() : null,
         ];
+
+        // Filtrar campos si se especificaron
+        if (!empty($this->fields)) {
+            return array_intersect_key($data, array_flip($this->fields));
+        }
+
+        return $data;
     }
+
 }
