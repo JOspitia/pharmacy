@@ -77,7 +77,16 @@ export async function apiFetch<T = unknown>(
   }
 
   // Petición a la API
-  const response = await fetch(path, init)
+  let response: Response
+  try {
+    response = await fetch(path, init)
+  } catch {
+    // fetch() rechaza cuando el backend no responde (red, CORS, server down)
+    throw new ApiError(
+      'No es posible establecer conexión con el servidor, intente nuevamente',
+      0,
+    )
+  }
 
   // Si la respuesta es 204, devolver undefined
   if (response.status === 204) {

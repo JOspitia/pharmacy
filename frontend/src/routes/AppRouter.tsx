@@ -1,59 +1,74 @@
 /**
- * AppRouter — React Router v7 con createBrowserRouter.
- * Usa <LoadingScreen /> en los layouts (refactor).
+ * AppRouter — React Router v7 con rutas anidadas.
+ * AppLayout es el chrome (sidebar + header + footer) y contiene <Outlet />.
+ * Las rutas hijas se renderizan dentro del <Content /> de AppLayout.
  */
 
-import { Navigate, Outlet, createBrowserRouter, RouterProvider } from 'react-router-dom'
+import { Navigate, createBrowserRouter, RouterProvider } from 'react-router-dom'
 import { useAuth } from '../context/useAuth'
 import { LoadingScreen } from '../components/LoadingScreen'
+import { AppLayout } from '../components/AppLayout'
 import { Login } from '../pages/Login'
 import { Home } from '../pages/Home'
+import { GroupsList, GroupFormModal } from '../pages/Groups'
 
-// Layout para rutas privadas
+/**
+ * PrivateLayout - Layout para rutas privadas
+ * @returns {JSX.Element}
+ */
 function PrivateLayout() {
 	const { isAuthenticated, isLoading } = useAuth()
 
 	if (isLoading) return <LoadingScreen />
 	if (!isAuthenticated) return <Navigate to="/login" replace />
 
-	return <Outlet />
+	return <AppLayout />
 }
 
-// Layout para rutas públicas
+/**
+ * PublicLayout - Layout para rutas públicas
+ * @returns {JSX.Element}
+ */
 function PublicLayout() {
 	const { isAuthenticated, isLoading } = useAuth()
 
 	if (isLoading) return <LoadingScreen />
 	if (isAuthenticated) return <Navigate to="/Home" replace />
 
-	return <Outlet />
+	return <Login />
 }
 
-// Router principal
+/**
+ * Router principal
+ * @returns {RouterProvider} - Router de React Router
+ */
 const router = createBrowserRouter([
-	// Layout para rutas públicas
-	{
-		element: <PublicLayout />,
-		children: [
-			// Ruta de login
-			{ path: '/login', element: <Login /> }
-		],
-	},
-	// Layout para rutas privadas
 	{
 		element: <PrivateLayout />,
 		children: [
-			// Ruta de inicio
+			// Ruta base de inicio
 			{ path: '/Home', element: <Home /> },
-			// Redirección a la página de inicio
+			// Rutas del módulo de grupos agrupadas
+			{
+				path: '/groups',
+				children: [
+					{ index: true, element: <GroupsList /> },
+					{ path: 'new', element: <GroupFormModal /> },
+					{ path: ':id/edit', element: <GroupFormModal /> },
+				]
+			},
+			// Ruta de redirección a la ruta base de inicio
 			{ path: '/', element: <Navigate to="/Home" replace /> },
+			// Ruta de redirección a la ruta base de inicio para rutas no encontradas
+			{ path: '*', element: <Navigate to="/" replace /> },
 		],
-	},
-	// Redirección a la página de inicio
-	{ path: '*', element: <Navigate to="/" replace /> },
+	}
 ])
 
-// Componente para el router principal
+/**
+ * AppRouter - Componente que muestra el router principal
+ * @returns {RouterProvider} - Router de React Router
+ */
 export function AppRouter() {
 	return <RouterProvider router={router} />
 }
