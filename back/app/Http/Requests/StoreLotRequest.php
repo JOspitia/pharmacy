@@ -34,6 +34,7 @@ class StoreLotRequest extends FormRequest
                 'uuid',
                 Rule::exists('products', 'id')->where(function ($query) {
                     $query->whereNull('deleted_at');
+                    $query->where('status', true);
                 }),
             ],
             'warehouse_id' => [
@@ -43,7 +44,7 @@ class StoreLotRequest extends FormRequest
                     $query->where('status', true);
             }),
         ],
-            'stock' => 'required|numeric|min:0',
+            'stock' => 'required|integer|min:0',
             'expiration_date' => 'required|date',
             'description' => 'nullable|string|max:300',
             'status' => 'boolean',
