@@ -39,6 +39,9 @@ services:
       - "3306:3306"
     volumes:
       - db_data:/var/lib/mysql
+      # Crea farmacia_testing, la base separada que usan las pruebas.
+      # Ver el comentario del archivo para el motivo.
+      - ./db/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       # Sin esto el backend podria intentar migrar antes de que MySQL acepte
       # conexiones y fallar en el primer arranque.

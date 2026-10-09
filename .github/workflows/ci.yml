@@ -29,7 +29,9 @@ jobs:
         image: public.ecr.aws/docker/library/mysql:8.0
         env:
           MYSQL_ROOT_PASSWORD: root
-          MYSQL_DATABASE: farmacia
+          # Base exclusiva de pruebas. El job solo corre pruebas, asi que no
+          # necesita la base de la aplicacion.
+          MYSQL_DATABASE: farmacia_testing
           MYSQL_USER: farmacia
           MYSQL_PASSWORD: farmacia
         ports:
