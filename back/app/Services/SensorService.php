@@ -27,11 +27,15 @@ class SensorService
     }
 
     /**
-     * Obtener todos los sensores
+     * Obtener todos los sensores, opcionalmente filtrados por bodega
      */
-    public function getAllSensors(): Collection
+    public function getAllSensors(?string $warehouseId = null): Collection
     {
-        return Sensor::latest()->with('warehouse:id,name')->get();
+        $query = Sensor::latest()->with('warehouse:id,name');
+        if ($warehouseId) {
+            $query->where('warehouse_id', $warehouseId);
+        }
+        return $query->get();
     }
 
     /**

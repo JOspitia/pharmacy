@@ -7,6 +7,7 @@ use App\Http\Resources\SensorResource;
 use App\Models\Sensor;
 use App\Services\SensorService;
 use Exception;
+use Illuminate\Http\Request;
 
 /**
  * Controlador para los sensores de monitoreo ambiental.
@@ -25,11 +26,14 @@ class SensorController extends Controller
     }
 
     /**
-     * Mostrar los sensores existentes.
+     * Mostrar los sensores existentes, opcionalmente filtrados por bodega.
      */
-    public function index()
+    public function index(Request $request)
     {
-        return SensorResource::collection($this->sensorService->getAllSensors());
+        $warehouseId = $request->query('warehouse_id');
+        return SensorResource::collection(
+            $this->sensorService->getAllSensors($warehouseId)
+        );
     }
 
     /**
