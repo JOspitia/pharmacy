@@ -25,6 +25,7 @@ class StoreGroupRequest extends FormRequest
                 'required',
                 'string',
                 'max:60',
+                'regex:/^[a-zA-ZáéíóúÁÉÍÓÚñÑ0-9\s\-\(\)°]+$/u',
                 Rule::unique('groups', 'name')
                     ->ignore($this->route('group')?->id)
                     ->whereNull('deleted_at')
@@ -43,6 +44,7 @@ class StoreGroupRequest extends FormRequest
             'name.string' => 'El campo nombre debe ser una cadena de texto.',
             'name.max' => 'El campo nombre debe tener como máximo 60 caracteres.',
             'name.unique' => 'El nombre ya existe en la base de datos.',
+            'name.regex' => 'El nombre solo permite letras, acentos, ñ, dígitos, espacios, guiones, paréntesis y el símbolo de grado.',
             'description.string' => 'El campo descripción debe ser una cadena de texto.',
             'description.max' => 'El campo descripción debe tener como máximo 300 caracteres.',
         ];

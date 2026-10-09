@@ -31,7 +31,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
 
     // Grupos
-    Route::get('groups/search', [GroupController::class, 'search']);
     Route::patch('groups/{group}/toggle-status', [GroupController::class, 'toggleStatus']);
     Route::apiResource('groups', GroupController::class);
 
