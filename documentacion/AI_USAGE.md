@@ -10,6 +10,11 @@
 6. [Decisiones del desarrollador vs. sugerencias de IA](#6-decisiones-del-desarrollador-vs-sugerencias-de-ia)
 7. [Historial completo de Historias de Usuario](#7-historial-completo-de-historias-de-usuario)
 8. [Lecciones aprendidas](#8-lecciones-aprendidas)
+9. [Segunda etapa: estabilización y cierre de requisitos](#9-segunda-etapa-estabilización-y-cierre-de-requisitos)
+   - [Qué se aceptó de las sugerencias](#91-qué-se-aceptó-de-las-sugerencias)
+   - [Qué se corrigió](#92-qué-se-corrigió)
+   - [Verificación previa a aplicar](#93-verificación-previa-a-aplicar)
+   - [Correcciones de documentación](#94-correcciones-de-documentación)
 
 ---
 
@@ -195,6 +200,9 @@ Usuario ←→ Jarvis (orquestador)
 | Filtrado backend para productos, frontend para bodegas/grupos/lotes | Desarrollador | Análisis de volumen de datos esperado |
 | Page size 30 para reportes | Desarrollador | Experiencia de usuario y rendimiento |
 | Exportación a Excel de todas las filas (no solo página actual) | Desarrollador | Requerimiento funcional |
+| Sustituir SQL Server por MySQL 8 | Desarrollador | El `LIKE` de MySQL es insensible a mayúsculas por defecto y eso sostiene la búsqueda del reporte |
+| El producto sí incluye activar/inactivar | Desarrollador | Se detectó que la HU lo excluía por error y se corrigió el documento |
+| El estado solo se modifica por el endpoint de alternancia, nunca desde el formulario | Desarrollador | Evita que un formulario omitiendo el campo deje registros inactivos por accidente |
 
 ---
 
@@ -252,3 +260,68 @@ HU-04 (Sensores) ─────────────────────
 6. **Los subagentes pueden fallar:** tener un plan de contingencia (trabajo inline con advertencia de calidad) permitió continuar sin bloquear el progreso.
 
 7. **Auditoría del README mediante IA:** Validar el README de forma cruzada contra el código fuente (`composer.json`, `package.json`, `.env`) utilizando la IA permitió identificar y corregir discrepancias críticas de stack (como la versión del framework, base de datos en SQL Server y la estructura real de carpetas en el frontend), garantizando que las instrucciones de arranque sean 100% verídicas y alineadas al estado actual del repositorio.
+
+---
+
+## 9. Segunda etapa: estabilización y cierre de requisitos
+
+Una vez construida la funcionalidad, se solicitó a la herramienta una etapa de estabilización con el alcance de cerrar los requisitos del enunciado que faltaban: Docker, pipeline de CI/CD, pruebas automatizadas y corrección de defectos detectados en uso real.
+
+### 9.1 Qué se aceptó de las sugerencias
+
+| Sugerencia | Motivo de aceptación |
+|---|---|
+| Cambiar la base de SQL Server a **MySQL 8** | El operador `LIKE` de MySQL es insensible a mayúsculas por defecto, que es exactamente lo que exige la búsqueda del reporte de inventario. En PostgreSQL sería sensible y obligaría a usar `ILIKE`. El SQL del proyecto resultó portable |
+| Eliminar `refetchRef` del hook `useApi` | Era un contador `useRef` leído en el array de dependencias de un `useEffect`. Mutar un ref no dispara re-render, así que ese efecto nunca volvía a ejecutarse por su causa. Como `refetch()` ya llamaba a `fetchData()` de forma directa, el ref era código muerto |
+| Reemplazar el reseteo de página del modal | El `useEffect` que hacía `setPage(1)` se sustituyó por el patrón que React documenta para ajustar estado cuando cambian las props: comparar el valor anterior durante el render |
+| Añadir `created_by` explícito a los factories | La columna es `NOT NULL` y el modelo solo la rellena si hay sesión iniciada, cosa que no ocurre en las pruebas |
+| Incluir el job de Docker en el pipeline | El enunciado pide el stack obligatorio completo; el job levanta el stack real y verifica que el login devuelva token |
+
+### 9.2 Qué se corrigió
+
+Estas correcciones son las relevantes para evaluar el uso de la herramienta: en todos los casos la propuesta inicial no se aplicó tal cual.
+
+| Propuesta inicial | Por qué se corrigió |
+|---|---|
+| Se propuso **eliminar el indicador de activar/inactivar** de productos al leer que el documento lo excluía | El desarrollador confirmó que el documento estaba equivocado y que el indicador debía existir. Se corrigió el documento, no el código |
+| Se generaron **6 reintentos de descarga** de imágenes ante el límite de Docker Hub | El límite de Docker Hub aplica por IP y los runners de CI las comparten, de modo que el cupo ya está agotado antes de empezar. Reintentar no tenía ninguna posibilidad de éxito: se eliminaron los reintentos y se resolvió usando registros espejo |
+| Se propuso una **clave de cifrado `APP_KEY` redactada a mano** | Decodificaba a 38 bytes y Laravel exige exactamente 32 para AES-256-CBC. Todas las peticiones de escritura devolvían error 500. El error no se detectó con pruebas locales porque el entorno de desarrollo ya tenía su propia clave |
+| Se excluyó `phpunit.xml` del contexto de Docker por considerarlo documentación | Dejó al contenedor sin posibilidad de ejecutar las pruebas. Un archivo de configuración de pruebas nunca debe quedar fuera de la imagen |
+| Se añadió una deshabilitación de regla de ESLint con el identificador equivocado | El identificador correcto era `react-hooks/use-memo`, no `react-hooks/exhaustive-deps`. La deshabilitación no surtía efecto y daba una falsa sensación de estar resuelto |
+| Se propuso una **sugerencia de configuración que nunca se leyó** | `CORS_ALLOWED_ORIGINS` no se leía porque el archivo de configuración de CORS no existe, y `SANCTUM_STATEFUL_DOMAINS` no aplicaba porque el middleware correspondiente está deshabilitado. Se eliminaron antes de propagarlas al archivo de ejemplo |
+| Se propuso una arquitectura de estados en el hook con una suma mal planteada | El cálculo de posicionesCNNagrupaba todos los resultados en un mismo instante por un error de acumulación. Se detectó al volcar los datos generados antes de aplicarlos |
+
+### 9.3 Verificación previa a aplicar
+
+Un patrón que se repetió en esta etapa fue **no confiar en la propuesta sin ejecutarla**:
+
+- Se reprodujo el fallo de la clave de cifrado eliminando el archivo de entorno local, se confirmó el error, se aplicó la corrección y se restauró el archivo.
+- Se reintrodujeron deliberadamente los defectos ya corregidos para comprobar que las pruebas nuevas los detectaban. Una de las pruebas no reaccionó, lo que demostró que era vacía y obligó a reescribir su documentación para que afirmara lo que realmente comprueba.
+- Se reconstruyó el entorno completo desde cero, incluida la base de datos, antes de dar por buena la configuración de Docker.
+- Se comprobó que los archivos no tuvieran finales de línea ni marcadores de orden de bytes, que producían diffs con cientos de líneas de ruido.
+
+### 9.4 Correcciones de documentación
+
+Al cruzar la documentación contra el código se detectaron afirmaciones que no correspondían a la implementación real. Se corrigieron porque la documentación es parte del entregable:
+
+| Documento | Afirmación que no se sostenía |
+|---|---|
+| Historias de usuario | Varias tablas y columnas descritas que nunca existieron |
+| Historias de usuario | Una regla de estado que contradecía la implementación |
+| `README.md` | Mencionaba una librería HTTP que el proyecto no usa |
+| `README.md` | Mencionaba un tipo de sensor que no existe en el modelo de datos |
+| Archivos de entorno | Variables de configuración que ningún componente leía |
+
+En todos los casos la corrección se hizo en la documentación para que refleje el código, y no al revés.
+
+### 9.5 Lecciones de esta etapa
+
+8. **Probar en el entorno local oculta fallos del entorno ajeno.** El fallo de la clave de cifrado no aparecía en la máquina del desarrollador porque ya tenía su propia clave configurada. Solo-afloró al ejecutar en un entorno limpio.
+
+9. **Un reintento solo sirve si el fallo es transitorio.** El límite de descargas de imágenes de contenedor no lo es: se sixth de formatea indefinidamente. Se gastaron varios minutos en seis intentos sin ninguna posibilidad de éxito, y la solución real era cambiar de registro.
+
+10. **Un valor escrito a mano debe verificarse, no suponerse.** Una clave de cifrado generada mentalmente parecía correcta y fallaba en runtime. Decodificarla y medir su longitud habría detectado el problema en segundos.
+
+11. **Una prueba que nunca falla no sirve de nada.** Al reintroducir los defectos corregidos para comprobar que las pruebas los detectaban, una de ellas pasó igualmente. Esoobligó a revisar su alcance y a documentar con precisión qué comprobaba y qué no.
+
+12. **La documentación también requiere verificación cruzada contra el código.** En este proyecto la documentación mentía en ambos sentidos: describía tablas que nunca existieron y, en el caso del README, afirmaba usar librerías y sensores ausentes.
