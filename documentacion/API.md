@@ -1,6 +1,6 @@
-# API de Inventario Farmacéutico — Documentación para Frontend
+﻿# API de Inventario Farmacéutico — Documentación para Frontend
 
-> **Stack:** Laravel 9 + Sanctum (token-based auth) + SQL Server Express
+> **Stack:** Laravel 9 + Sanctum (token-based auth) + SQL Server 2025
 > **Base URL:** `http://localhost:8000/api`
 > **Versión:** 1.0 — Julio 2026
 
@@ -712,4 +712,45 @@ curl "http://localhost:8000/api/reportes/inventario?bodega_id=...&estado=por_ven
 curl "http://localhost:8000/api/bodegas/{id}/alerts?created_after=2026-07-04T19:00:00Z" \
   -H "Authorization: Bearer {token}" \
   -H "Accept: application/json"
+```
+
+---
+
+## 10. Observabilidad
+
+Endpoints públicos (sin autenticación) para load balancers y orquestadores.
+
+### 10.1 Liveness probe
+
+```
+GET /api/health
+```
+
+Devuelve 200 si el proceso PHP puede responder. No verifica nada externo.
+
+**Response 200:**
+```json
+{ "status": "ok" }
+```
+
+### 10.2 Readiness probe
+
+```
+GET /api/ready
+```
+
+Verifica que la base de datos responda. Si la DB no conecta, devuelve 503.
+
+**Response 200:**
+```json
+{ "status": "ok", "database": "connected" }
+```
+
+**Response 503:**
+```json
+{
+  "status": "error",
+  "database": "disconnected",
+  "message": "SQLSTATE[08001] ..."
+}
 ```
