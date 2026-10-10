@@ -1,0 +1,155 @@
+name: Deploy
+
+# --- Configuracion inicial ---
+#
+# ESTE WORKFLOW NO DEBE CORRER EN PUSH A MAIN HASTA QUE HAYA HOSTING.
+#
+# Una vez configurado el hosting y los secretos en GitHub -> Settings -> Environments:
+#   1. Descomentar el trigger push: branches: [main]
+#   2. Eliminar workflow_dispatch
+#   3. Eliminar los 'exit 1' de los pasos placeholder
+#
+# Mientras tanto, usar workflow_dispatch para probar manualmente.
+on:
+  workflow_dispatch:  # Disparo manual: GitHub Actions -> Deploy -> Run workflow
+  # push:
+  #   branches: [main]  # Descomentar cuando haya hosting configurado
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # STAGING — se despliega automaticamente tras cada push a main.
+  # ---------------------------------------------------------------------------
+  deploy-staging:
+    name: Deploy a Staging
+    runs-on: ubuntu-latest
+    environment:
+      name: staging
+      url: https://staging.pharmacy.example.com
+    timeout-minutes: 20
+
+    steps:
+      - name: Descargar codigo
+        uses: actions/checkout@v5
+
+      # ---------------------------------------------------------------------------
+      # Rellenar estos valores segun el hosting elegido.
+      # Ejemplos comentados abajo para las opciones mas comunes.
+      # ---------------------------------------------------------------------------
+
+      # --- Opcion 1: Azure App Service (recomendada para proyectos Laravel) ---
+      # - name: Desplegar a Azure App Service
+      #   uses: azure/webapps-deploy@v3
+      #   with:
+      #     app-name: ${{ secrets.AZURE_APP_NAME_STAGING }}
+      #     slot-name: staging
+      #     publish-profile: ${{ secrets.AZURE_PUBLISH_PROFILE_STAGING }}
+      #     package: ./back
+
+      # --- Opcion 2: Servidor via SSH (VPS, droplet, EC2) ---
+      # - name: Desplegar via SSH
+      #   uses: appleboy/ssh-action@v1
+      #   with:
+      #     host: ${{ secrets.STAGING_HOST }}
+      #     username: ${{ secrets.STAGING_USER }}
+      #     key: ${{ secrets.STAGING_SSH_KEY }}
+      #     script: |
+      #       cd /var/www/pharmacy
+      #       git pull origin main
+      #       docker compose pull
+      #       docker compose up -d --build backend
+      #       docker compose exec -T backend php artisan migrate --force
+      #       docker compose exec -T backend php artisan db:seed --force
+
+      # --- Opcion 3: Render (gratuito para staging) ---
+      # Crear un Web Service en render.com apuntando a este repo.
+      # Render detecta automaticamente docker-compose.yml y levanta el stack.
+      # En ese caso este job solo hace smoke tests.
+
+      # Placeholder: el siguiente paso siempre falla hasta que se configure
+      # el metodo de deploy elegido. Reemplazar con una de las opciones arriba.
+      - name: Configurar secretos de staging
+        run: |
+          echo "DEPLOY_STAGING_PENDING=configure"
+          echo "Staging deployment requires one of:"
+          echo "  1. Azure App Service (azure/webapps-deploy)"
+          echo "  2. SSH to VPS (appleboy/ssh-action)"
+          echo "  3. Render auto-deploy (configure in render.com)"
+          echo ""
+          echo "Set the following secrets in GitHub -> Settings -> Secrets:"
+          echo "  AZURE_PUBLISH_PROFILE_STAGING  (for option 1)"
+          echo "  STAGING_HOST, STAGING_USER, STAGING_SSH_KEY  (for option 2)"
+          echo ""
+          echo "Until a deployment method is configured, this job fails intentionally."
+          exit 1
+
+      # Smoke tests contra staging: verifican que el deploy no rompio nada.
+      - name: Smoke tests en staging
+        run: |
+          # Esperar a que el backendLevante.
+          for intento in $(seq 1 30); do
+            codigo=$(curl -s -o /dev/null -w '%{http_code}' http://staging.pharmacy.example.com/api/health || echo '000')
+            if [ "$codigo" = "200" ]; then
+              echo "Staging responde (intento $intento)"
+              break
+            fi
+            echo "Esperando a staging... intento $intento"
+            sleep 10
+          done
+
+          # /health publicoy sin auth.
+          curl -s http://staging.pharmacy.example.com/api/health \
+            | grep -q '"status":"ok"' \
+            || { echo "/health no devolvio ok"; exit 1; }
+
+          # /ready verifica DB.
+          curl -s http://staging.pharmacy.example.com/api/ready \
+            | grep -q '"database":"connected"' \
+            || { echo "/ready indica DB desconectada"; exit 1; }
+
+          echo "Smoke tests OK"
+
+  # ---------------------------------------------------------------------------
+  # PRODUCTION — requiere aprobacion manual antes de desplegar.
+  # ---------------------------------------------------------------------------
+  deploy-production:
+    name: Deploy a Production
+    runs-on: ubuntu-latest
+    needs: deploy-staging
+    environment:
+      name: production
+      url: https://pharmacy.example.com
+    timeout-minutes: 30
+
+    steps:
+      - name: Descargar codigo
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0  # Necesario para git log origin/main..HEAD
+
+      # Al momento de aprobar, quien despleiga elige si quiere migraciones y seeders.
+      # Si el schema cambio, descomentar la linea de migrate.
+      - name: Mostrar version a desplegar
+        run: |
+          echo "Deploying: $(git log --oneline -1)"
+          echo "Changes since last prod:"
+          git log origin/main..HEAD --oneline | head -10
+
+      # ---------------------------------------------------------------------------
+      # Configurar igual que staging, pero apuntando a production.
+      # ---------------------------------------------------------------------------
+      - name: Configurar secretos de production
+        run: |
+          echo "DEPLOY_PRODUCTION_PENDING=configure"
+          echo "Production deployment requires configuration."
+          echo "Set the following secrets:"
+          echo "  AZURE_PUBLISH_PROFILE_PRODUCTION  (for Azure App Service)"
+          echo "  PRODUCTION_HOST, PRODUCTION_USER, PRODUCTION_SSH_KEY  (for SSH)"
+          exit 1
+
+      - name: Notificar despliegue
+        if: false  # Cambiar a true cuando haya canal de Slack/Teams
+        run: |
+          echo "Despliegue a production aprobado. Notificar al equipo."
+          # Ejemplo con GitHub CLI:
+          # gh api repos/{owner}/{repo}/issues -f title="Deploy $GITHUB_SHA a production" \
+          #   -f body="Fecha: $(date -u +%Y-%m-%dT%H:%M:%SZ)"

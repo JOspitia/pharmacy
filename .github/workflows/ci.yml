@@ -16,31 +16,27 @@ jobs:
   backend:
     name: Backend (Laravel)
     runs-on: ubuntu-latest
-    # Sin esto GitHub deja el job hasta 6 horas. El limite evita que una
-    # compilacion colgada consuma la cuenta entera.
-    timeout-minutes: 10
+    timeout-minutes: 15
 
-    # Las pruebas usan MySQL y no SQLite, asi que el job necesita la base
-    # levantada. La imagen viene del mismo espejo sin limite de descargas que
-    # usa el docker-compose, porque los service containers tambien pasan por
-    # Docker Hub y sufrian el mismo HTTP 429.
     services:
-      mysql:
-        image: public.ecr.aws/docker/library/mysql:8.0
+      # SQL Server 2022 (la version disponible en GitHub Actions).
+      # La imagen gratuita Developer edition esta habilitada por MSSQL_PID.
+      mssql:
+        image: mcr.microsoft.com/mssql/server:2022-latest
         env:
-          MYSQL_ROOT_PASSWORD: root
-          # Base exclusiva de pruebas. El job solo corre pruebas, asi que no
-          # necesita la base de la aplicacion.
-          MYSQL_DATABASE: farmacia_testing
-          MYSQL_USER: farmacia
-          MYSQL_PASSWORD: farmacia
+          ACCEPT_EULA: Y
+          MSSQL_PID: Developer
+          # La password debe cumplir complejidad de SQL Server:
+          # mayuscula, minuscula, digito, simbolo.
+          MSSQL_SA_PASSWORD: 'TestPass1!'
         ports:
-          - 3306:3306
+          - 1433:1433
         options: >-
-          --health-cmd="mysqladmin ping -h 127.0.0.1"
+          --health-cmd="/opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P 'TestPass1!' -C -Q 'SELECT 1'"
           --health-interval=10s
           --health-timeout=5s
-          --health-retries=10
+          --health-retries=20
+          --health-start-period=30s
 
     defaults:
       run:
@@ -54,10 +50,17 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: '8.2'
-          # Solo las extensiones que el proyecto usa de verdad. Sin GD ni
-          # others de mas: lo minimo necesario hace el job mas rapido.
-          extensions: pdo_mysql, mbstring, bcmath, intl, zip
+          extensions: pdo_sqlsrv, sqlsrv, mbstring, bcmath, intl, zip
           coverage: none
+
+      - name: Instalar sqlcmd
+        run: |
+          curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | apt-key add - \
+          && curl -fsSL https://packages.microsoft.com/config/ubuntu/22.04/prod.list \
+            > /etc/apt/sources.list.d/mssql.list \
+          && apt-get update \
+          && ACCEPT_EULA=Y apt-get install -y --no-install-recommends mssql-tools18 unixodbc-dev \
+          && ln -s /opt/mssql-tools18/bin/sqlcmd /usr/local/bin/sqlcmd
 
       - name: Validar composer.json
         run: composer validate --strict
@@ -65,13 +68,26 @@ jobs:
       - name: Instalar dependencias
         run: composer install --no-interaction --prefer-dist --no-progress
 
-      # El runner parte de un checkout limpio, sin .env porque esta en el
-      # .gitignore. Sin APP_KEY el middleware EncryptCookies lanza
-      # MissingAppKeyException en cuanto una prueba hace una peticion HTTP.
       - name: Preparar entorno de pruebas
         run: |
           cp .env.example .env
           php artisan key:generate --force
+          # Apuntar a SQL Server del service container.
+          php -r "
+            \$env = file_get_contents('.env');
+            \$env = preg_replace('/^DB_CONNECTION=.*/m', 'DB_CONNECTION=sqlsrv', \$env);
+            \$env = preg_replace('/^DB_HOST=.*/m', 'DB_HOST=localhost', \$env);
+            \$env = preg_replace('/^DB_PORT=.*/m', 'DB_PORT=1433', \$env);
+            \$env = preg_replace('/^DB_DATABASE=.*/m', 'DB_DATABASE=farmacia_testing', \$env);
+            \$env = preg_replace('/^DB_USERNAME=.*/m', 'DB_USERNAME=sa', \$env);
+            \$env = preg_replace('/^DB_PASSWORD=.*/m', 'DB_PASSWORD=TestPass1!', \$env);
+            file_put_contents('.env', \$env);
+          "
+
+      - name: Crear base de datos
+        run: |
+          /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'TestPass1!' -C \
+            -Q "IF DB_ID(N'farmacia_testing') IS NULL CREATE DATABASE farmacia_testing;"
 
       - name: Verificar sintaxis PHP
         run: |
@@ -123,33 +139,28 @@ jobs:
   docker:
     name: Docker (imagenes)
     runs-on: ubuntu-latest
-    # Es el job mas lento: descarga imagenes base, construye dos imágenes desde
-    # cero porque el runner no tiene caché, levanta el stack y espera al backend.
     timeout-minutes: 30
 
     steps:
       - name: Descargar codigo
         uses: actions/checkout@v5
 
-      # Docker Hub limita las descargas anonimas por IP y los runners de GitHub
-      # Actions comparten IP, asi que un pull directo falla siempre con HTTP
-      # 429 y reintentar no sirve de nada. Por eso el compose y los Dockerfiles
-      # apuntan a mirrors sin ese tope: public.ecr.aws para MySQL y
-      # mirror.gcr.io/library/ para las imagenes base de los builds.
+      # Validar que el compose no tiene errores de sintaxis.
       - name: Validar configuracion de compose
         run: docker compose config --quiet
 
       - name: Levantar el stack completo
         run: docker compose up -d --build
 
-      # El backend espera la base y aplica migraciones y seeders al arrancar.
-      - name: Esperar al backend
+      # /health es publico: el balanceador lo llama sin token. Si responde 200
+      # con {"status":"ok"}, la imagen esta bien construida.
+      - name: Esperar al backend y verificar liveness
         run: |
           listo=false
-          for intento in $(seq 1 30); do
-            codigo=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8000/api/login || true)
-            if [ "$codigo" = "405" ] || [ "$codigo" = "422" ]; then
-              echo "El backend responde (HTTP $codigo)"
+          for intento in $(seq 1 60); do
+            respuesta=$(curl -s http://localhost:8000/api/health || echo '')
+            if [ "$respuesta" = '{"status":"ok"}' ]; then
+              echo "Backend vivo (intento $intento)"
               listo=true
               break
             fi
@@ -158,12 +169,26 @@ jobs:
           done
 
           if [ "$listo" != "true" ]; then
-            echo "El backend no respondio a tiempo"
+            echo "El backend no respondio /health a tiempo"
+            docker compose logs backend --tail 50
             exit 1
           fi
 
-      # El login debe devolver un token: sin el AdminUserSeeder no habria
-      # forma de entrar y el seed seria un fallo silencioso.
+      # /ready verifica que la DB responda. Solo si /ready da 200 el orquestador
+      # puede empezar a mandar trafico.
+      - name: Verificar readiness
+        run: |
+          respuesta=$(curl -s http://localhost:8000/api/ready)
+          echo "$respuesta"
+
+          if ! echo "$respuesta" | grep -q '"database":"connected"'; then
+            echo "/ready indica que la base no esta conectada"
+            docker compose logs db --tail 30
+            exit 1
+          fi
+          echo "Readiness OK: base de datos conectada"
+
+      # Login con las credenciales del seeder. Si devuelve token, el seed sirvio.
       - name: Verificar login
         run: |
           respuesta=$(curl -s -X POST http://localhost:8000/api/login \
@@ -173,7 +198,7 @@ jobs:
           echo "$respuesta"
 
           case "$respuesta" in
-            *'"token"'*) echo "Login correcto" ;;
+            *'"token"'*) echo "Login correcto: seed aplicado" ;;
             *) echo "El login no devolvio token"; exit 1 ;;
           esac
 
@@ -181,9 +206,8 @@ jobs:
         if: failure()
         run: docker compose logs backend --tail 100
 
-      # always() y no solo success: si un paso anterior falla, este tambien se
-      # ejecuta. Sin eso el job terminaria dejando contenedores y el volumen
-      # activos en el runner.
+      # always() para que se limpie aunque un paso anterior falle. Sin esto los
+      # contenedores quedan activos en el runner.
       - name: Apagar el stack
         if: always()
         run: docker compose down -v
