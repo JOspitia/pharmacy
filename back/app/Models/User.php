@@ -2,8 +2,8 @@
 
 namespace App\Models;
 
-// use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
@@ -12,24 +12,13 @@ class User extends Authenticatable
 {
     use HasApiTokens, HasFactory, Notifiable;
 
-    /**
-     * Roles definidos en la seccion 3 del enunciado.
-     *
-     * La lista esta duplicada como dato constante y como ENUM en la migracion
-     * de la columna role. Si se agrega un rol hay que tocar ambos lugares.
-     *
-     * @var array<int, string>
-     */
-    public const ROLES = [
-        'auxiliar_farmacia',
-        'regente_farmacia',
-        'medico',
-        'auditor',
-        'admin',
-    ];
 
     /**
      * The attributes that are mass assignable.
+     *
+     * Ya no esta 'role': el rol es una relacion, se asigna por role_id. Un
+     * 'role' en mass assignment permitiria escribir un nombre de rol que no
+     * existe en la base.
      *
      * @var array<int, string>
      */
@@ -37,7 +26,7 @@ class User extends Authenticatable
         'name',
         'email',
         'password',
-        'role',
+        'role_id',
     ];
 
     /**
@@ -60,24 +49,69 @@ class User extends Authenticatable
     ];
 
     /**
-     * Indica si el usuario tiene al menos uno de los roles indicados.
+     * Rol del usuario.
      *
-     * Se usa en dos lugares: en los Gate definidos en AuthServiceProvider y en
-     * el middleware EnsureRole.
-     *
-     * @param  array<int, string>  $roles
+     * Es una relacion, no un atributo: el valor vive en roles.name y el acceso
+     * por id va por role_id.
      */
-    public function hasAnyRole(array $roles): bool
+    public function role(): BelongsTo
     {
-        return in_array($this->role, $roles, true);
+        return $this->belongsTo(Role::class);
     }
 
     /**
-     * El administrador pasa cualquier comprobacion de rol sin necesidad de
-     * aparecer en la lista de cada capacidad.
+     * Indica si el usuario tiene un permiso concreto.
+     *
+     * Unico metodo de autorizacion del modelo. Resuelve tanto los permisos CRUD
+     * ("warehouses.can_create") como las capacidades globales
+     * ("autorizar-control-especial"), porque para la aplicacion un permiso es
+     * un nombre y no hay diferencia entre los dos al comprobarlo.
+     *
+     * MEMORIZACION: la lista de permisos del rol se lee una sola vez por
+     * instancia y se guarda en memoria. Antes cada comprobacion era un EXISTS
+     * contra la base, y una pantalla que evaluara diez permisos hacia diez
+     * consultas para preguntar siempre lo mismo. Ahora hay una consulta por
+     * peticion, no una por permiso.
+     *
+     * El costo es que un cambio de permisos no se ve dentro de la misma
+     * instancia. Para una peticion HTTP eso es correcto: los permisos no
+     * cambian mientras se procesa. Quien necesite releer usa fresh(), que
+     * devuelve una instancia nueva sin la cache.
+     *
+     * @param  string  $nombre  Nombre completo del permiso.
      */
-    public function isAdmin(): bool
+    public function hasPermission(string $nombre): bool
     {
-        return $this->role === 'admin';
+        if ($this->role_id === null) {
+            return false;
+        }
+
+        return in_array($nombre, $this->nombresPermiso(), true);
     }
+
+    /**
+     * Nombres de los permisos del rol, cargados una sola vez.
+     *
+     * Null es el estado "todavia no se consulto": un rol sin permisos devuelve
+     * un arreglo vacio, que es un valor valido y no se puede usar de centinela.
+     *
+     * @return array<int, string>
+     */
+    protected function nombresPermiso(): array
+    {
+        if ($this->nombresPermisoCache === null) {
+            $this->nombresPermisoCache = $this->role?->permissions()
+                ->pluck('permissions.name')
+                ->all() ?? [];
+        }
+
+        return $this->nombresPermisoCache;
+    }
+
+    /**
+     * Cache de permisos por instancia. No se propaga al modelo serializado.
+     *
+     * @var array<int, string>|null
+     */
+    protected $nombresPermisoCache = null;
 }

@@ -2,6 +2,7 @@
 
 namespace Database\Factories;
 
+use App\Models\Role;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Str;
 
@@ -25,18 +26,27 @@ class UserFactory extends Factory
             'remember_token' => Str::random(10),
             // Por defecto los usuarios de prueba no son admin, para que un test
             // no pase sin querer por el Gate::before.
-            'role' => 'auxiliar_farmacia',
+            //
+            // firstOrCreate y no un id fijo: los tests corren con
+            // RefreshDatabase, que aplica las migraciones pero no los seeders.
+            // Buscar el rol por id fijo fallaria en toda prueba, y buscarlo por
+            // nombre crea el que falta.
+            'role_id' => fn () => Role::firstOrCreate([
+                'name' => 'auxiliar_farmacia',
+            ])->id,
         ];
     }
 
     /**
      * Usuario con un rol concreto.
      *
-     * @param  string  $role  Uno de los valores de User::ROLES
+     * @param  string  $role  Nombre del rol, por ejemplo 'regente_farmacia'.
      */
     public function conRol(string $role): static
     {
-        return $this->state(fn (array $attributes) => ['role' => $role]);
+        return $this->state(fn (array $attributes) => [
+            'role_id' => Role::firstOrCreate(['name' => $role])->id,
+        ]);
     }
 
     public function admin(): static
