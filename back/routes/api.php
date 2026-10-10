@@ -3,6 +3,7 @@
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\HealthController;
 use App\Http\Controllers\BodegaController;
 use App\Http\Controllers\GroupController;
 use App\Http\Controllers\ProductController;
@@ -25,6 +26,10 @@ use App\Http\Controllers\ReportController;
 */
 
 // Rutas públicas
+// Observabilidad: probes para orquestadores y load balancers. Sin auth.
+Route::get('/health', [HealthController::class, 'health']);
+Route::get('/ready', [HealthController::class, 'ready']);
+
 Route::post('/login', [AuthController::class, 'login']);
 
 // Rutas protegidas por Sanctum
