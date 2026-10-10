@@ -29,19 +29,13 @@ jobs:
       - name: Descargar codigo
         uses: actions/checkout@v5
 
-      # Cache de Docker entre builds: si no cambia una capa, no se reconstruye.
-      # Con BuildKit el cache se guarda en el runner, pero entre runs se pierde.
-      # Con GHA cache se persiste.
-      - name: Configurar Buildx con cache
+      # Cache entre builds: con `cache-from`/`cache-to: type=gha` en los pasos
+      # de build, el propio BuildKit guarda las capas en el cache de GitHub
+      # Actions. No hace falta un `actions/cache` aparte sobre
+      # /tmp/.buildx-cache: esa ruta no es la que BuildKit usa, asi que el
+      # cacheaba un directorio vacio.
+      - name: Configurar Buildx
         uses: docker/setup-buildx-action@v3
-
-      - name: Cache de Docker
-        uses: actions/cache@v4
-        with:
-          path: /tmp/.buildx-cache
-          key: docker-buildx-${{ github.sha }}
-          restore-keys: |
-            docker-buildx-
 
       # ---------------------------------------------------------------------------
       # Construir la imagen del backend.

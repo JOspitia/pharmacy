@@ -87,8 +87,28 @@ jobs:
           # ACCEPT_EULA tiene que estar en el entorno del proceso que instala.
           # Sin la variable, apt aborta con un error de dpkg que no menciona
           # la licencia.
-          ACCEPT_EULA=Y sudo -E apt-get install -y --no-install-recommends \
-            mssql-tools18 unixodbc-dev
+          #
+          # NEEDRESTART_MODE=l es lo que evita que este paso tarde 6 minutos.
+          #
+          # needrestart (dependencia de apt en Ubuntu) revisa despues de cada
+          # instalacion que servicios quedaron desactualizados y, por defecto,
+          # los REINICIA. En el runner eso dispara
+          # `systemctl restart php8.2-fpm.service` sobre una VM completa, y
+          # esa llamada se queda colgada varios minutos. El log lo delata:
+          #
+          #   Setting up mssql-tools18 (18.7.1.1-1) ...
+          #   Restarting services...
+          #    systemctl restart php8.2-fpm.service
+          #   No containers need to be restarted.
+          #
+          # `l` = list only: informa que habria que reiniciar, pero no lo
+          # hace. Para este workflow reiniciar php-fpm del runner no sirve de
+          # nada: las pruebas no pasan por php-fpm, corren con el CLI.
+          #
+          # Medido: la instalacion en si tarda 2-4s. Los minutos eran todos
+          # del reinicio.
+          NEEDRESTART_MODE=l ACCEPT_EULA=Y sudo -E apt-get install -y \
+            --no-install-recommends mssql-tools18 unixodbc-dev
 
           # Verificar que sqlcmd quedo instalado. Un fallo silencioso aqui
           # aparece 30 segundos despues, en el primer paso que lo invoca,
@@ -103,19 +123,16 @@ jobs:
 
       - name: Preparar entorno
         run: |
+          # .env hace falta para que key:generate produzca APP_KEY. No se
+          # reescriben los valores de base de datos: eso va en el env: del
+          # paso que corre las pruebas.
+          #
+          # El motivo de no editar .env es que el cargador de Laravel es
+          # inmutable (ver tests/bootstrap.php): una variable de entorno REAL
+          # gana sobre lo que diga el archivo. Reescribir el archivo seria
+          # trabajo innecesario que ademas se puede desincronizar.
           cp .env.example .env
           php artisan key:generate --force
-          # Apuntar al service container del runner.
-          php -r "
-            \$env = file_get_contents('.env');
-            \$env = preg_replace('/^DB_CONNECTION=.*/m', 'DB_CONNECTION=sqlsrv', \$env);
-            \$env = preg_replace('/^DB_HOST=.*/m', 'DB_HOST=127.0.0.1', \$env);
-            \$env = preg_replace('/^DB_PORT=.*/m', 'DB_PORT=1433', \$env);
-            \$env = preg_replace('/^DB_DATABASE=.*/m', 'DB_DATABASE=farmacia_testing', \$env);
-            \$env = preg_replace('/^DB_USERNAME=.*/m', 'DB_USERNAME=sa', \$env);
-            \$env = preg_replace('/^DB_PASSWORD=.*/m', 'DB_PASSWORD=TestPass1!', \$env);
-            file_put_contents('.env', \$env);
-          "
 
       - name: Esperar a que SQL Server acepte conexiones
         run: |
@@ -128,9 +145,14 @@ jobs:
           # "server was not found", y el reintento de abajo nunca llega a
           # ejecutarse porque el paso ya murio.
           #
-          # 30 intentos x 2s = 60s de margen.
+          # `timeout 10` en cada intento: sin el, un socket que acepta la
+          # conexion pero no responde se queda colgado indefinidamente y el
+          # timeout-minutes del job es el unico freno.
+          #
+          # 30 intentos x (10s + 2s) como maximo teorico.
           for i in $(seq 1 30); do
-            if /opt/mssql-tools18/bin/sqlcmd -S 127.0.0.1,1433 -U sa -P 'TestPass1!' -C \
+            if timeout 10 /opt/mssql-tools18/bin/sqlcmd \
+                 -S 127.0.0.1,1433 -U sa -P 'TestPass1!' -C \
                  -Q "SELECT 1" > /dev/null 2>&1; then
               echo "SQL Server acepta conexiones (intento $i)"
               exit 0
@@ -138,7 +160,7 @@ jobs:
             echo "Esperando a SQL Server... intento $i"
             sleep 2
           done
-          echo "SQL Server no acepto conexiones en 60s"
+          echo "SQL Server no acepto conexiones a tiempo"
           exit 1
 
       - name: Crear base de datos
@@ -147,13 +169,15 @@ jobs:
           # que lo hace con la variable MYSQL_DATABASE, la imagen arranca vacia
           # y hay que crearlas a mano.
           echo "Creando farmacia_testing..."
-          /opt/mssql-tools18/bin/sqlcmd -S 127.0.0.1,1433 -U sa -P 'TestPass1!' -C \
+          timeout 30 /opt/mssql-tools18/bin/sqlcmd \
+            -S 127.0.0.1,1433 -U sa -P 'TestPass1!' -C \
             -Q "IF DB_ID(N'farmacia_testing') IS NULL CREATE DATABASE farmacia_testing;"
 
           # Verificar que quedo creada. Si el CREATE fallo en silencio, esto
           # avisa con un mensaje claro en vez de dejar que las pruebas fallen
           # despues con "cannot open database".
-          /opt/mssql-tools18/bin/sqlcmd -S 127.0.0.1,1433 -U sa -P 'TestPass1!' -C \
+          timeout 20 /opt/mssql-tools18/bin/sqlcmd \
+            -S 127.0.0.1,1433 -U sa -P 'TestPass1!' -C \
             -Q "SELECT name FROM sys.databases WHERE name = 'farmacia_testing'" \
             -h -1 | grep -q farmacia_testing \
             || { echo "La base farmacia_testing no existe"; exit 1; }
@@ -174,6 +198,52 @@ jobs:
 
       - name: Ejecutar pruebas
         run: php artisan test
+        # Estas variables NO van en .env: el cargador de Laravel es inmutable
+        # (ver tests/bootstrap.php), asi que una variable real de entorno gana
+        # sobre el archivo. Declararlas aca deja la configuracion del CI a la
+        # vista en el workflow, en vez de escondida en un script.
+        #
+        # DB_CONNECTION y DB_DATABASE los fija tests/bootstrap.php y no
+        # necesitan estar aca, pero se declaran igual para que el bloque
+        # describa la configuracion completa y no haya que abrir otro archivo
+        # para saber a que base se conecta.
+        env:
+          DB_CONNECTION: sqlsrv
+          DB_HOST: 127.0.0.1
+          DB_PORT: '1433'
+          DB_DATABASE: farmacia_testing
+          DB_USERNAME: sa
+          DB_PASSWORD: TestPass1!
+
+      - name: Diagnostico en caso de fallo
+        if: failure()
+        run: |
+          # Todo con timeout: un paso de diagnostico que cuelga esconde el
+          # error original y convierte un fallo de 30s en uno de 15 min.
+          echo "=== PHP ==="
+          php --version 2>&1 | head -1 || true
+
+          echo "=== Extensiones PHP relevantes ==="
+          php -m 2>/dev/null | grep -iE '^(pdo|sqlsrv|pdo_sqlsrv|mbstring|bcmath|intl|zip)$' \
+            || echo "(no se encontro ninguna)"
+
+          echo "=== Conexion a la base ==="
+          timeout 15 /opt/mssql-tools18/bin/sqlcmd \
+            -S 127.0.0.1,1433 -U sa -P 'TestPass1!' -C \
+            -Q "SELECT @@VERSION" 2>&1 | head -3 \
+            || echo "DB inaccesible, o sqlcmd no quedo instalado"
+
+          echo "=== Bases de datos existentes ==="
+          timeout 15 /opt/mssql-tools18/bin/sqlcmd \
+            -S 127.0.0.1,1433 -U sa -P 'TestPass1!' -C \
+            -Q "SELECT name FROM sys.databases" -h -1 2>&1 | head -10 \
+            || echo "no se pudieron listar"
+
+          echo "=== Logs del contenedor SQL Server ==="
+          # El service container corre en el mismo daemon de Docker, asi que
+          # sus logs son accesibles desde el runner.
+          timeout 30 docker logs --tail 40 "${{ job.services.mssql.id }}" 2>&1 \
+            | tail -40 || echo "no se pudieron obtener los logs del contenedor"
 
   # ---------------------------------------------------------------------------
   # frontend: no necesita base de datos. Corre en paralelo con backend.
@@ -209,3 +279,14 @@ jobs:
 
       - name: Construir
         run: npm run build
+
+      - name: Diagnostico en caso de fallo
+        if: failure()
+        run: |
+          echo "=== Node ==="
+          node --version 2>&1 || true
+          npm --version 2>&1 || true
+          echo "=== Dependencias instaladas ==="
+          # `ls` y no `npm ls`: si la instalacion fallo, npm ls tambien
+          # falla y el diagnostico se pierde.
+          ls node_modules 2>/dev/null | wc -l | xargs echo "paquetes en node_modules:"

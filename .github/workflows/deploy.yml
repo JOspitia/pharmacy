@@ -15,6 +15,13 @@ on:
   # push:
   #   branches: [main]  # Descomentar cuando haya hosting configurado
 
+# Valores compartidos por los dos jobs. Cambiar una URL es cambiar una linea.
+env:
+  HEALTH_PATH: /api/health
+  READY_PATH: /api/ready
+  STAGING_URL: https://staging.pharmacy.example.com
+  PROD_URL: https://pharmacy.example.com
+
 jobs:
   # ---------------------------------------------------------------------------
   # STAGING — se despliega automaticamente tras cada push a main.
@@ -24,7 +31,8 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: staging
-      url: https://staging.pharmacy.example.com
+      # La URL viene del env de arriba: un solo lugar donde cambiarla.
+      url: ${{ env.STAGING_URL }}
     timeout-minutes: 20
 
     steps:
@@ -85,24 +93,36 @@ jobs:
       # Smoke tests contra staging: verifican que el deploy no rompio nada.
       - name: Smoke tests en staging
         run: |
-          # Esperar a que el backendLevante.
+          # `curl --max-time` en todas las llamadas. Sin eso, contra un host
+          # que acepta la conexion pero no responde, el script se queda colgado
+          # y el timeout-minutes del job es el unico freno.
+
+          # Esperar a que el backend levante.
+          listo=false
           for intento in $(seq 1 30); do
-            codigo=$(curl -s -o /dev/null -w '%{http_code}' http://staging.pharmacy.example.com/api/health || echo '000')
+            codigo=$(curl -s --max-time 10 -o /dev/null -w '%{http_code}' \
+              "${STAGING_URL}${HEALTH_PATH}" || echo '000')
             if [ "$codigo" = "200" ]; then
               echo "Staging responde (intento $intento)"
+              listo=true
               break
             fi
             echo "Esperando a staging... intento $intento"
             sleep 10
           done
 
-          # /health publicoy sin auth.
-          curl -s http://staging.pharmacy.example.com/api/health \
+          if [ "$listo" != "true" ]; then
+            echo "Staging no respondio a tiempo"
+            exit 1
+          fi
+
+          # /health es publico, no lleva token.
+          curl -s --max-time 10 "${STAGING_URL}${HEALTH_PATH}" \
             | grep -q '"status":"ok"' \
             || { echo "/health no devolvio ok"; exit 1; }
 
-          # /ready verifica DB.
-          curl -s http://staging.pharmacy.example.com/api/ready \
+          # /ready verifica que la base responda.
+          curl -s --max-time 10 "${STAGING_URL}${READY_PATH}" \
             | grep -q '"database":"connected"' \
             || { echo "/ready indica DB desconectada"; exit 1; }
 
@@ -117,7 +137,7 @@ jobs:
     needs: deploy-staging
     environment:
       name: production
-      url: https://pharmacy.example.com
+      url: ${{ env.PROD_URL }}
     timeout-minutes: 30
 
     steps:
