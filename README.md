@@ -1,4 +1,4 @@
-# Prueba Técnica — Gestión de Almacenes con Monitoreo IoT
+﻿# Prueba Técnica — Gestión de Almacenes con Monitoreo IoT
 
 ![CI](https://github.com/JOspitia/pharmacy/actions/workflows/ci.yml/badge.svg)
 
@@ -16,14 +16,14 @@ Sistema de gestión de almacenes (bodegas), productos farmacéuticos, lotes e in
 - **Fetch API**: Cliente HTTP nativo del navegador para las llamadas a la API.
 
 ### Infraestructura
-- **Docker 29** + **Docker Compose**: Entorno de ejecución con MySQL 8, backend y frontend.
+- **Docker 29** + **Docker Compose**: Entorno de ejecución con SQL Server 2025, backend y frontend.
 - **GitHub Actions**: Pipeline de integración continua con tres jobs (backend, frontend, docker).
 
 ### Backend
 - **Laravel 9**: Framework PHP para la API REST.
 - **PHP 8.0.2+**: Lenguaje de programación del servidor.
 - **Laravel Sanctum 3**: Autenticación basada en tokens.
-- **MySQL 8**: Base de datos relacional (la imagen oficial en Docker).
+- **SQL Server 2025**: Base de datos relacional (la imagen oficial en Docker). El enunciado la recomienda por el bloqueo de filas y las restricciones `CHECK`. La versión del contenedor se alinea con la del equipo: `17.x`.
 
 ---
 
@@ -39,7 +39,7 @@ docker compose up --build
 |---|---|
 | Frontend | http://localhost:5173 |
 | Backend (API) | http://localhost:8000 |
-| MySQL | `localhost:3306` |
+| SQL Server | `localhost:1433` |
 
 La primera vez tarda varios minutos porque compila las imágenes. Las
 migraciones y los seeders se ejecutan solos al arrancar el backend.
@@ -66,9 +66,9 @@ La instalación manual (sin Docker) requiere:
 - **npm** v9+.
 
 ### Para el Backend
-- **PHP 8.0.2+** con extensiones: `pdo_mysql`, `mbstring`, `openssl`, `tokenizer`.
+- **PHP 8.0.2+** con extensiones: `pdo_sqlsrv`, `sqlsrv`, `mbstring`, `openssl`, `tokenizer`.
 - **Composer** (gestor de dependencias de PHP).
-- **MySQL 8** (local o el contenedor del compose).
+- **SQL Server 2019 o superior** (local o el contenedor del compose). El proyecto se validó sobre **SQL Server 2025** (17.x).
 
 ---
 
@@ -94,13 +94,18 @@ La instalación manual (sin Docker) requiere:
    # En Linux/macOS:
    cp .env.example .env
    ```
-   El archivo ya viene con los valores de la base de MySQL y una clave de
+   El archivo ya viene con los valores de la base de SQL Server y una clave de
    desarrollo, así que funciona sin editarlo. Si usas otra base de datos, cambia
    las variables `DB_*`.
 
    > `back/.env.example` y `back/.env.docker` son el mismo archivo con una única
-   > diferencia: `DB_HOST`. Aquí apunta a `127.0.0.1` (MySQL local) y en el
+   > diferencia: `DB_HOST`. Aquí apunta a `127.0.0.1` (SQL Server local) y en el
    > `.env.docker` apunta a `db` (el servicio del compose).
+
+   > El usuario es `sa`, que en SQL Server es el único superusuario: no existe
+   > una separación entre root y un usuario de aplicación como en MySQL. La
+   > contraseña de desarrollo es `YourStrong!Passw0rd` y SQL Server exige que
+   > cumpla complejidad (mayúscula, minúscula, dígito y símbolo).
 
 4. **Generar la Application Key**
    ```bash
@@ -116,10 +121,12 @@ La instalación manual (sin Docker) requiere:
    Los seeders crean el usuario administrador de prueba (`admin` / `password`) y las
    7 unidades de medida base.
 
-   > **Sobre `db/scripts.sql`:** ese archivo es un volcado generado desde SQL Server
-   > durante el desarrollo original y está **obsoleto**. Contiene rutas de Windows
-   > y sintaxis específica de ese motor, por lo que no funciona con MySQL ni dentro
-   > de Docker. Se conserva únicamente como registro histórico.
+   > **Sobre `db/scripts.sql`:** ese archivo es un volcado generado durante el
+   > desarrollo original y está **obsoleto**. Contiene rutas de Windows y un
+   > esquema que ya no coincide con el actual: desde entonces se añadieron las
+   > tablas `units`, `products`, `lots`, `sensors`, `roles`, `modules` y
+   > `role_modules`. Las migraciones de Laravel son la fuente de verdad del
+   > esquema. Se conserva únicamente como registro histórico.
 
 6. **Iniciar el servidor**
    ```bash
@@ -307,7 +314,7 @@ Decisiones que no estaban definidas en el enunciado y que se tomaron por criteri
 
 | # | Supuesto | Motivo |
 |---|---|---|
-| 1 | **La base de datos es MySQL 8**, no SQL Server. | El desarrollo original usó SQL Server, pero en MySQL el operador `LIKE` es insensible a mayúsculas por defecto, que es lo que exige la búsqueda del reporte (HU-02). El SQL del proyecto es portable: `LOWER(...)`, `whereDate` y `paginate` funcionan igual en ambos motores. |
+| 1 | **La base de datos es SQL Server 2025**, el motor que recomienda el enunciado. | El enunciado acepta PostgreSQL 16 o SQL Server y recomienda SQL Server por el bloqueo de filas y las restricciones `CHECK`. MySQL 8 también era aceptado si se justificaba, y se usó durante el desarrollo alegando que su `LIKE` es insensible a mayúsculas por defecto, pero esa propiedad la comparte SQL Server (collation `_CI_AS`), así que el argumento no distinguía entre ambos motores y la recomendación del enunciado pesa más. El `LIKE` case-insensitive que necesita la búsqueda del reporte (HU-02) sigue funcionando. | Se eligio la version 2025 para coincidir con la instancia SQLEXPRESS instalada en el equipo de desarrollo. 
 | 2 | **El backend se sirve con `php artisan serve`**, no con nginx + php-fpm. | Evita depender de un servidor web adicional y de su configuración para una evaluación. Para producción lo indicado sería nginx o Apache con PHP-FPM. |
 | 3 | **El frontend se sirve con el servidor de desarrollo de Vite**, no con los archivos compilados de `dist/`. | Permite evaluarlo sin paso de build. Para producción se ejecuta `npm run build` y se sirve el contenido de `dist/`. |
 | 4 | **`back/.env.docker` está versionado.** | Solo contiene una clave de desarrollo y credenciales de la base local del compose. No hay secretos reales. |

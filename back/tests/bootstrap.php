@@ -16,10 +16,10 @@
  * pruebas borraria los datos de trabajo y el usuario de administrador.
  */
 
-$_ENV['DB_CONNECTION'] = $_SERVER['DB_CONNECTION'] = 'mysql';
+$_ENV['DB_CONNECTION'] = $_SERVER['DB_CONNECTION'] = 'sqlsrv';
 $_ENV['DB_DATABASE'] = $_SERVER['DB_DATABASE'] = 'farmacia_testing';
 
-putenv('DB_CONNECTION=mysql');
+putenv('DB_CONNECTION=sqlsrv');
 putenv('DB_DATABASE=farmacia_testing');
 
 require __DIR__ . '/../vendor/autoload.php';

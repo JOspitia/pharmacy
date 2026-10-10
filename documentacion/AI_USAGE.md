@@ -1,4 +1,4 @@
-# AI_USAGE.md — Sistema Farmacéutico de Gestión de Inventario
+﻿# AI_USAGE.md — Sistema Farmacéutico de Gestión de Inventario
 
 ## Índice
 
@@ -15,6 +15,7 @@
    - [Qué se corrigió](#92-qué-se-corrigió)
    - [Verificación previa a aplicar](#93-verificación-previa-a-aplicar)
    - [Correcciones de documentación](#94-correcciones-de-documentación)
+10. [Tercera etapa: migración a SQL Server](#10-tercera-etapa-migración-de-mysql-8-a-sql-server-2025)
 
 ---
 
@@ -271,7 +272,7 @@ Una vez construida la funcionalidad, se solicitó a la herramienta una etapa de 
 
 | Sugerencia | Motivo de aceptación |
 |---|---|
-| Cambiar la base de SQL Server a **MySQL 8** | El operador `LIKE` de MySQL es insensible a mayúsculas por defecto, que es exactamente lo que exige la búsqueda del reporte de inventario. En PostgreSQL sería sensible y obligaría a usar `ILIKE`. El SQL del proyecto resultó portable |
+| Cambiar la base de SQL Server a **MySQL 8** | El operador `LIKE` de MySQL es insensible a mayúsculas por defecto, que es exactamente lo que exige la búsqueda del reporte de inventario. En PostgreSQL sería sensible y obligaría a usar `ILIKE`. El SQL del proyecto resultó portable. **Retirado después: el argumento era incompleto** (ver §10) |
 | Eliminar `refetchRef` del hook `useApi` | Era un contador `useRef` leído en el array de dependencias de un `useEffect`. Mutar un ref no dispara re-render, así que ese efecto nunca volvía a ejecutarse por su causa. Como `refetch()` ya llamaba a `fetchData()` de forma directa, el ref era código muerto |
 | Reemplazar el reseteo de página del modal | El `useEffect` que hacía `setPage(1)` se sustituyó por el patrón que React documenta para ajustar estado cuando cambian las props: comparar el valor anterior durante el render |
 | Añadir `created_by` explícito a los factories | La columna es `NOT NULL` y el modelo solo la rellena si hay sesión iniciada, cosa que no ocurre en las pruebas |
@@ -325,3 +326,51 @@ En todos los casos la corrección se hizo en la documentación para que refleje 
 11. **Una prueba que nunca falla no sirve de nada.** Al reintroducir los defectos corregidos para comprobar que las pruebas los detectaban, una de ellas pasó igualmente. Esoobligó a revisar su alcance y a documentar con precisión qué comprobaba y qué no.
 
 12. **La documentación también requiere verificación cruzada contra el código.** En este proyecto la documentación mentía en ambos sentidos: describía tablas que nunca existieron y, en el caso del README, afirmaba usar librerías y sensores ausentes.
+
+---
+
+## 10. Tercera etapa: migración de MySQL 8 a SQL Server 2025
+
+El enunciado acepta PostgreSQL 16 o SQL Server y recomienda SQL Server por el bloqueo de filas y las restricciones `CHECK`. El proyecto venía sobre MySQL 8, y se decidió volver al motor recomendado.
+
+### 10.1 El argumento que Justificaba MySQL era Incompleto
+
+La decisión original de usar MySQL 8 estaba justificada con que "el operador `LIKE` es insensible a mayúsculas por defecto, que es lo que exige la búsqueda del reporte". Eso es cierto, pero **no distingue a MySQL de SQL Server**:
+
+| Motor | `LIKE` por defecto | Collation |
+|---|---|---|
+| MySQL 8 | insensible a mayúsculas | `utf8mb4_0900_ai_ci` |
+| SQL Server | insensible a mayúsculas | `SQL_Latin1_General_CP1_CI_AS` |
+| PostgreSQL | **sensible** (requiere `ILIKE`) | — |
+
+El único motor que habría obligado a reescribir la búsqueda era PostgreSQL. SQL Server habría servido igual, así que el argumento no justificaba apartarse de la recomendación del enunciado.
+
+### 10.2 Qué hubo que Reescribir
+
+| Elemento | En MySQL | En SQL Server | Motivo |
+|---|---|---|---|
+| Imagen de base | `mysql:8.0` | `mcr.microsoft.com/mssql/server:2025-latest` | — |
+| Puerto | 3306 | 1433 | — |
+| Credenciales | usuario `farmacia` + root | solo `sa` | SQL Server no separa superusuario |
+| Creación de bases | `MYSQL_DATABASE` automático | servicio `db-init` con `sqlcmd` | No existe `/docker-entrypoint-initdb.d` |
+| Driver PHP | `pdo_mysql` | `pdo_sqlsrv` + `sqlsrv` vía PECL | Requiere ODBC Driver 18 |
+| `users.role` | `ENUM` | `string(30)` + `CHECK` | T-SQL no tiene ENUM |
+| `ON DELETE RESTRICT` | válido | `NO ACTION` | La palabra `RESTRICT` no existe en T-SQL |
+| `insertOrIgnore()` | atajo de Laravel | `MERGE` | El atajo solo existe en MySQL y SQLite |
+| `dropColumn()` | nativo | requiere `doctrine/dbal` | Laravel 9 lo exige |
+
+### 10.3 Errores que Costaron Tiempo, y su Causa Real
+
+| Error aparente | Causa real |
+|---|---|
+| `install failed` en `pecl install sqlsrv` | La última versión exige PHP 8.3 y el proyecto corre 8.2. El mensaje real era `requires PHP (version >= 8.3.0)` |
+| `Login failed for user 'sa'` en `db-init` | El servicio no tenía `MSSQL_SA_PASSWORD` en su entorno |
+| `Base  verificada` con el nombre vacío | `$BD` lo interpola Docker Compose antes de llegar al contenedor; hacía falta `$$BD` |
+| `Cannot open database "farmacia"` | SQL Server no crea bases solo, a diferencia de `MYSQL_DATABASE` |
+| `Incorrect syntax near the keyword 'restrict'` | `ON DELETE RESTRICT` no es T-SQL |
+
+Cinco fallos encadenados, y en cuatro el mensaje apuntaba a otra causa. **Leer el error literal habría enviado a la solución equivocada en varios casos**: `install failed` no dice "actualizaste PHP a una versión que no pide"; `Login failed` no dice "te falta una variable de entorno".
+
+### 10.4 Lo que Resultó Portable
+
+Prácticamente todo el SQL del proyecto. `CHECK` con `ALTER TABLE ... ADD CONSTRAINT`, `LOWER()`, `whereDate`, `paginate`, los tipos de columna (`uniqueidentifier`, `bit`, `nvarchar`) y la PK compuesta de `role_modules` funcionaron sin cambios. Solo hubo que tocar lo que usa vocabulario específico de motor: `ENUM`, `RESTRICT`, `insertOrIgnore`, el punto de extensión de MySQL y `after()`.

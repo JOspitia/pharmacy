@@ -23,7 +23,45 @@ class UserFactory extends Factory
             'email_verified_at' => now(),
             'password' => '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', // password
             'remember_token' => Str::random(10),
+            // Por defecto los usuarios de prueba no son admin, para que un test
+            // no pase sin querer por el Gate::before.
+            'role' => 'auxiliar_farmacia',
         ];
+    }
+
+    /**
+     * Usuario con un rol concreto.
+     *
+     * @param  string  $role  Uno de los valores de User::ROLES
+     */
+    public function conRol(string $role): static
+    {
+        return $this->state(fn (array $attributes) => ['role' => $role]);
+    }
+
+    public function admin(): static
+    {
+        return $this->conRol('admin');
+    }
+
+    public function regente(): static
+    {
+        return $this->conRol('regente_farmacia');
+    }
+
+    public function auxiliar(): static
+    {
+        return $this->conRol('auxiliar_farmacia');
+    }
+
+    public function medico(): static
+    {
+        return $this->conRol('medico');
+    }
+
+    public function auditor(): static
+    {
+        return $this->conRol('auditor');
     }
 
     /**

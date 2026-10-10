@@ -89,8 +89,13 @@ return [
             'charset' => 'utf8',
             'prefix' => '',
             'prefix_indexes' => true,
-            // 'encrypt' => env('DB_ENCRYPT', 'yes'),
-            // 'trust_server_certificate' => env('DB_TRUST_SERVER_CERTIFICATE', 'false'),
+            // El contenedor de SQL Server genera un certificado autofirmado, asi
+            // que el driver rechaza la conexion si no se le dice que confíe en
+            // el. Por eso el valor por defecto es yes y no false como en
+            // Laravel: contra un SQL Server con certificado emitido por una CA
+            // habria que ponerlo en false desde el entorno.
+            'encrypt' => env('DB_ENCRYPT', 'yes'),
+            'trust_server_certificate' => env('DB_TRUST_SERVER_CERTIFICATE', 'yes'),
         ],
 
     ],

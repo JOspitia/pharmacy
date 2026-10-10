@@ -27,13 +27,14 @@
         <env name="TELESCOPE_ENABLED" value="false"/>
 
         <!--
-            Las pruebas usan el mismo motor que produccion (MySQL) en lugar de
-            SQLite. SQLite no reproduce el comportamiento de LIKE, que en
-            MySQL es insensible a mayusculas y en SQLite depende de la
-            collation, y esa diferencia es justamente la que sostiene la
-            busqueda del reporte de inventario. Ademas MySQL devuelve los
-            enteros de las columnas numericas como string, que fue el origen
-            del bug de cast de stock que estas pruebas cubren.
+            Las pruebas usan el mismo motor que produccion (SQL Server) en lugar
+            de SQLite. SQLite no reproduce el comportamiento de LIKE, que en
+            SQL Server y en MySQL es insensible a mayusculas por defecto (por
+            las collations _CI_AS y _ci) y en SQLite depende de la collation. Esa
+            diferencia es justamente la que sostiene la busqueda del reporte de
+            inventario. Ademas SQL Server devuelve los enteros de las columnas
+            numericas como string, igual que MySQL, y ese fue el origen del bug
+            de cast de stock que estas pruebas cubren.
 
             Apuntan a una base APARTE porque RefreshDatabase ejecuta
             migrate:fresh. Sobre la base de la aplicacion eso borraria los
@@ -47,10 +48,10 @@
             modo que ni <env> con force ni un .env.testing la sobreescriben.
             El bootstrap se ejecuta antes de que la aplicacion arranque.
 
-            MySQL y no SQLite a proposito: SQLite no reproduce el LIKE
+            SQL Server y no SQLite a proposito: SQLite no reproduce el LIKE
             insensible a mayusculas que sostiene la busqueda del reporte.
         -->
-        <env name="DB_CONNECTION" value="mysql"/>
+        <env name="DB_CONNECTION" value="sqlsrv"/>
         <env name="DB_DATABASE" value="farmacia_testing"/>
     </php>
 </phpunit>

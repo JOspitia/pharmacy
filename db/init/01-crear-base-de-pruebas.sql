@@ -5,15 +5,15 @@
 -- misma base que usa la aplicacion, correr las pruebas destruiria los datos
 -- de trabajo y el usuario de administrador sembrado.
 --
--- MySQL ejecuta este script solo la primera vez que se inicializa el
--- contenedor, cuando el volumen de datos aun esta vacio.
+-- ANTES: este archivo se montaba en /docker-entrypoint-initdb.d de la imagen
+-- de MySQL, que lo ejecuta solo la primera vez que se inicializa el
+-- contenedor. SQL Server NO tiene ese punto de extension, asi que ahora la
+-- creacion de ambas bases la hace el servicio `db-init` de docker-compose.yml,
+-- que corre sqlcmd una vez y termina.
+--
+-- Se conserva el archivo como documentacion del motivo por el que existen dos
+-- bases. La ejecucion real esta en docker-compose.yml.
 
-CREATE DATABASE IF NOT EXISTS `farmacia_testing`
-    CHARACTER SET utf8mb4
-    COLLATE utf8mb4_unicode_ci;
-
--- El usuario de la aplicacion necesita permisos sobre la base de pruebas,
--- porque las pruebas se ejecutan con las mismas credenciales que el backend.
--- Sin este permiso el RefreshDatabase falla con "command denied".
-GRANT ALL PRIVILEGES ON `farmacia_testing`.* TO 'farmacia'@'%';
-FLUSH PRIVILEGES;
+IF DB_ID('farmacia_testing') IS NULL
+    CREATE DATABASE farmacia_testing;
+GO

@@ -1,57 +1,110 @@
-# Orquestacion de la prueba tecnica.
+﻿# Orquestacion de la prueba tecnica.
 #
 #   docker compose up --build
 #
 # Resultado:
 #   Frontend  http://localhost:5173
 #   Backend   http://localhost:8000
-#   MySQL     localhost:3306
+#   SQL Server localhost:1433
 #
-# La base es MySQL 8 y no el SQL Server que se uso en el desarrollo local.
-# Motivo tecnico: en MySQL el operador LIKE es insensible a mayusculas por
-# defecto, que es justo lo que exige la busqueda del reporte de inventario
-# (HU-02). En PostgreSQL el operador LIKE es sensible a mayusculas y habria que
-# usar ILIKE, que la documentacion menciona pero el codigo nunca implemento.
-# El resto del SQL del proyecto (LOWER(...), whereDate, paginate) es portable.
+# La base es SQL Server 2025. El enunciado acepta PostgreSQL 16 o SQL Server,
+# y recomienda SQL Server por el bloqueo de filas y las restricciones CHECK.
+#
+# NOTA sobre el LIKE: MySQL y SQL Server son insensibles a mayusculas por
+# defecto (collations _ci y _CI_AS respectivamente), asi que la busqueda del
+# reporte de inventario (HU-02) funciona igual en los dos. El unico motor que
+# obliga a usar ILIKE es PostgreSQL. Ver README, supuesto 1.
 
 services:
   db:
-    # La imagen base viene de public.ecr.aws, el espejo de Docker Hub que
-    # publica AWS, y no de Docker Hub directamente.
-    #
-    # Motivo: GitHub Actions ejecuta sobre IP compartidas y Docker Hub limita
-    # las descargas anonimas por IP. Con Docker Hub el pipeline falla de forma
-    # sistematica con HTTP 429, sin importar cuantas veces se reintente.
-    # public.ecr.aws sirve los mismos tags sin ese tope, funciona igual en
-    # Docker Desktop y no requiere autenticacion.
-    #
-    # En los Dockerfiles las imagenes base van con el prefijo
-    # mirror.gcr.io/library/, que es el otro mirror gratuitito de Docker Hub.
-    image: public.ecr.aws/docker/library/mysql:8.0
+    # SQL Server 2025, la misma version que la instancia local SQLEXPRESS
+    # (17.0.1000.7). Se alinea el contenedor con la maquina para que no haya
+    # diferencias de comportamiento entre quien levanta el stack con Docker y
+    # quien lo levanta contra el servidor instalado en el equipo.
+    image: mcr.microsoft.com/mssql/server:2025-latest
     container_name: pharmacy-db
     restart: unless-stopped
     environment:
-      MYSQL_DATABASE: farmacia
-      MYSQL_USER: farmacia
-      MYSQL_PASSWORD: farmacia
-      MYSQL_ROOT_PASSWORD: root
+      # SQL Server no arranca sin aceptar la licencia, a diferencia de MySQL.
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: "Developer"
+      # La contrasena de sa debe cumplir complejidad: mayuscula, minuscula,
+      # digito y simbolo. SQL Server rechaza las debiles con un error poco
+      # descriptivo al arrancar.
+      MSSQL_SA_PASSWORD: "YourStrong!Passw0rd"
     ports:
-      - "3306:3306"
+      # 1434 en el host, 1433 dentro del contenedor.
+      #
+      # El equipo de desarrollo tiene una instancia SQL Server Express local
+      # escuchando en 1433, y cuando dos procesos piden el mismo puerto en la
+      # misma direccion Windows le concede el primero que se registro. El
+      # servicio local gana, y cualquier cliente que se conecte a localhost:1433
+      # aterriza en la instancia local en vez de en la del contenedor, con un
+      # error de autenticacion que no dice nada del conflicto de puertos.
+      #
+      # Publicar en 1434 evita el choque. La aplicacion no se ve afectada:
+      # dentro de la red de Docker el backend sigue hablando con el servicio
+      # "db" por su puerto interno 1433, que es lo que dice DB_PORT en
+      # .env.docker. Solo cambia como se llega desde el host.
+      - "1434:1433"
     volumes:
-      - db_data:/var/lib/mysql
-      # Crea farmacia_testing, la base separada que usan las pruebas.
-      # Ver el comentario del archivo para el motivo.
-      - ./db/init:/docker-entrypoint-initdb.d:ro
+      - db_data:/var/opt/mssql
     healthcheck:
-      # Sin esto el backend podria intentar migrar antes de que MySQL acepte
-      # conexiones y fallar en el primer arranque.
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-ufarmacia", "-pfarmacia"]
-      interval: 5s
-      timeout: 5s
-      retries: 20
-      start_period: 30s
+      # sqlcmd18 exige -C para confiar el certificado autofirmado que genera
+      # el contenedor. Sin -C falla el handshake.
+      test:
+        - "CMD-SHELL"
+        - "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -C -Q 'SELECT 1' || exit 1"
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      # SQL Server tarda bastante mas en arrancar que MySQL: la primera vez
+      # inicializa la base del sistema.
+      start_period: 90s
     networks:
       - pharmacy
+
+  # SQL Server no tiene el punto de extension /docker-entrypoint-initdb.d que
+  # usa la imagen de MySQL, asi que la base de pruebas se crea con un
+  # servicio de un solo uso que corre una vez y termina.
+  #
+  # Existe porque las pruebas usan RefreshDatabase, que ejecuta migrate:fresh.
+  # Si apuntaran a la base de la aplicacion, cada corrida borraria los datos
+  # de trabajo y el usuario administrador.
+  db-init:
+    image: mcr.microsoft.com/mssql/server:2025-latest
+    container_name: pharmacy-db-init
+    depends_on:
+      db:
+        condition: service_healthy
+    # MISMAS variables que en db. El servicio necesita ACCEPT_EULA para arrancar
+    # y MSSQL_SA_PASSWORD para autenticarse: sin esta variable el sqlcmd falla
+    # con "Login failed for user 'sa'", que no dice nada sobre la causa.
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "YourStrong!Passw0rd"
+    networks:
+      - pharmacy
+    entrypoint:
+      - /bin/bash
+      - -c
+      - |
+        set -e
+        # SQL Server no crea ninguna base por su cuenta: la imagen de MySQL lo
+        # hacia con MYSQL_DATABASE, y aca hay que hacerlo a mano. Se crean las
+        # dos, la de la aplicacion y la de pruebas, porque RefreshDatabase
+        # ejecuta migrate:fresh y no sirve apuntar a la misma base.
+        # Las variables del shell se escapan con doble signo: Compose las
+        # interpola antes de enviar el script al contenedor, y con un solo signo
+        # el script llega con el nombre vacio (por eso antes imprimia
+        # "Base  verificada"). Compose tambien interpola dentro de los
+        # comentarios, asi que ni el nombre de la variable puede aparecer sin
+        # escapar en uno.
+        for BD in farmacia farmacia_testing; do
+            /opt/mssql-tools18/bin/sqlcmd -S db -U sa -P "$$MSSQL_SA_PASSWORD" -C \
+              -Q "IF DB_ID('$$BD') IS NULL CREATE DATABASE $$BD;"
+            echo "Base $$BD verificada."
+        done
 
   backend:
     build:
@@ -66,6 +119,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
     networks:
       - pharmacy
 
