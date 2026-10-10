@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Models\Role;
 use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
@@ -49,13 +50,25 @@ class UserSeeder extends Seeder
             ],
         ];
 
+        // Los ids se resuelven una sola vez en vez de un Role::where por
+        // usuario. Ademas fallar aca con un nombre de rol desconocido es mejor
+        // que crear un usuario con role_id nulo.
+        $roleIds = Role::pluck('id', 'name');
+
         foreach ($usuarios as $usuario) {
+            if (! isset($roleIds[$usuario['role']])) {
+                throw new \RuntimeException(
+                    "UserSeeder necesita el rol '{$usuario['role']}'. "
+                    . 'Corrige RoleSeeder antes que este seeder.'
+                );
+            }
+
             User::updateOrCreate(
                 ['email' => $usuario['email']],
                 [
                     'name' => $usuario['name'],
                     'password' => Hash::make('password'),
-                    'role' => $usuario['role'],
+                    'role_id' => $roleIds[$usuario['role']],
                 ]
             );
         }
