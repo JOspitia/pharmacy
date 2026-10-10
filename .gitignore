@@ -2,3 +2,11 @@ composer.phar
 .atl/
 .agents
 .vscode/
+
+# Artefactos de agentes: el SDD vive en Engram, no en el repositorio.
+# El formato .md de esta carpeta no es documentación del producto.
+/sdd/
+
+# Enunciado de la prueba tecnica: es material de evaluacion, no del producto.
+# Conservalo local para consultarlo, pero no lo subas al repositorio.
+/documentacion/Prueba_Tecnica_Senior_FARTMAR_Candidato*.pdf

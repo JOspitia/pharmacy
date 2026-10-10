@@ -302,8 +302,6 @@ Todos los botones de confirmación deben deshabilitarse tras el primer click has
 | D-4 | `/health` y `/ready` endpoints | ✅ `HealthController` + `HealthCheckTest` |
 | D-5 | Logs estructurados con correlation ID | ❌ |
 | D-6 | Verificación de salud de DB en `/ready` | ✅ En `HealthController::ready()` |
-| D-5 | Logs estructurados con correlation ID | ❌ |
-| D-6 | Verificación de salud de DB en `/ready` | ❌ |
 
 ### Staging pipeline sugerido
 

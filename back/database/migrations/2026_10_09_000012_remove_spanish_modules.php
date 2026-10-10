@@ -22,7 +22,7 @@ use Illuminate\Support\Facades\DB;
  *
  * Por que una migracion y no un simple script: porque la base de desarrollo
  * arranco con migraciones incrementales durante el renombre. Quien haga
- * migrate:fresh desde cero nunca vera los duplicados, pero quien確 herede esta
+ * migrate:fresh desde cero nunca vera los duplicados, pero quien herede esta
  * base si los tiene. El repositorio debe converger al mismo estado en los
  * dos casos.
  */
