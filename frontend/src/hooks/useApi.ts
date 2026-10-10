@@ -79,7 +79,17 @@ export function useApi<T>(path: string | null, deps: unknown[] = []): UseApiResu
     // el array de dependencias de useCallback no puede ser un literal. Sin esto
     // el callback se recrearia en cada render y el efecto de abajo se
     // ejecutaria infinitamente.
-    // eslint-disable-next-line react-hooks/use-memo
+    //
+    // Se silencian DOS reglas porque las dos disparan aqui y por la misma causa:
+    //
+    //   use-memo          exige que la lista de dependencias sea un literal.
+    //                     Un spread la convierte en expresion, no literal.
+    //   exhaustive-deps   no puede verificar estaticamente que un spread
+    //                     contenga las dependencias correctas.
+    //
+    // Ninguna de las dos se puede satisfacer sin cambiar la firma publica
+    // del hook: el llamador decide cuantas dependencias pasar.
+    // eslint-disable-next-line react-hooks/use-memo, react-hooks/exhaustive-deps
   }, [path, ...deps])
 
   /**

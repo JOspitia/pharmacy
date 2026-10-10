@@ -62,24 +62,38 @@ jobs:
 
       - name: Instalar sqlcmd en el runner
         run: |
-          # ACCEPT_EULA tiene que estar en el entorno del proceso que
-          # instala: sin la variable, apt aborta con un error de dpkg que no
-          # menciona la licencia.
-          # El runner NO es root: corre como el usuario `runner` con sudo
-          # disponible. Escribir en /usr/share/keyrings o en
-          # /etc/apt/sources.list.d sin sudo da "Permission denied" y el
-          # paso muere en el primer comando.
+          # Tres flags, y cada uno existe por un motivo:
           #
-          # `sudo tee` y no `> archivo` porque la redireccion la abre la shell
-          # del usuario sin privilegios; tee escribe como root.
+          #   --batch   no preguntar nada, nunca
+          #   --no-tty  no abrir /dev/tty. Sin esto gpg falla con
+          #             "cannot open '/dev/tty': No such device or address"
+          #             porque en GitHub Actions no hay terminal que asignar.
+          #             --batch deberia implicarlo, pero el flag explicito deja
+          #             la intencion a la vista y no depende de esa implicacion.
+          #   --yes     sobreescribir el keyring si ya existe (re-ejecucion).
           curl -fsSL https://packages.microsoft.com/keys/microsoft.asc \
-            | sudo gpg --dearmor -o /usr/share/keyrings/microsoft-prod.gpg
+            | sudo gpg --batch --no-tty --yes --dearmor \
+                -o /usr/share/keyrings/microsoft-prod.gpg
+
+          # `sudo tee` y no `> archivo`: la redireccion la abre la shell del
+          # usuario sin privilegios y da "Permission denied". tee escribe
+          # como root.
           curl -fsSL https://packages.microsoft.com/config/ubuntu/22.04/prod.list \
             | sed 's|deb \[|deb [signed-by=/usr/share/keyrings/microsoft-prod.gpg |' \
             | sudo tee /etc/apt/sources.list.d/mssql-release.list > /dev/null
+
           sudo apt-get update
+
+          # ACCEPT_EULA tiene que estar en el entorno del proceso que instala.
+          # Sin la variable, apt aborta con un error de dpkg que no menciona
+          # la licencia.
           ACCEPT_EULA=Y sudo -E apt-get install -y --no-install-recommends \
             mssql-tools18 unixodbc-dev
+
+          # Verificar que sqlcmd quedo instalado. Un fallo silencioso aqui
+          # aparece 30 segundos despues, en el primer paso que lo invoca,
+          # como "No such file or directory" sin relacion con la causa.
+          command -v sqlcmd || ls -l /opt/mssql-tools18/bin/sqlcmd
 
       - name: Validar composer.json
         run: composer validate --strict
