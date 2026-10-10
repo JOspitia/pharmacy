@@ -1,42 +1,49 @@
 name: CI
 
-# Se ejecuta en cada push a main y en cada Pull Request hacia main.
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
 
-# Cancela ejecuciones anteriores del mismo ref si llega una version nueva.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  # ---------------------------------------------------------------------------
+  # backend: service container SQL Server dedicado. Corre en paralelo con
+  # frontend. Docker NO se construye aqui: eso pasa solo en releases.
+  # ---------------------------------------------------------------------------
   backend:
     name: Backend (Laravel)
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
     services:
-      # SQL Server 2022 (la version disponible en GitHub Actions).
-      # La imagen gratuita Developer edition esta habilitada por MSSQL_PID.
+      # SQL Server 2022. La imagen Developer es gratuita y no requiere registro.
       mssql:
         image: mcr.microsoft.com/mssql/server:2022-latest
         env:
           ACCEPT_EULA: Y
           MSSQL_PID: Developer
-          # La password debe cumplir complejidad de SQL Server:
-          # mayuscula, minuscula, digito, simbolo.
           MSSQL_SA_PASSWORD: 'TestPass1!'
         ports:
           - 1433:1433
+        # El healthcheck NO usa sqlcmd a proposito.
+        #
+        # La ruta de sqlcmd dentro de la imagen cambio entre versiones
+        # (/opt/mssql-tools/ en unas, /opt/mssql-tools18/ en otras). Con la
+        # ruta equivocada el comando falla, el contenedor nunca queda healthy,
+        # y GitHub imprime "mssql service is starting" indefinidamente sin
+        # decir por que. Un chequeo de puerto TCP no depende de ninguna ruta:
+        # solo necesita bash, que esta en cualquier imagen Ubuntu.
         options: >-
-          --health-cmd="/opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P 'TestPass1!' -C -Q 'SELECT 1'"
+          --health-cmd="bash -c ':> /dev/tcp/127.0.0.1/1433'"
           --health-interval=10s
           --health-timeout=5s
-          --health-retries=20
-          --health-start-period=30s
+          --health-retries=30
+          --health-start-period=60s
 
     defaults:
       run:
@@ -53,14 +60,26 @@ jobs:
           extensions: pdo_sqlsrv, sqlsrv, mbstring, bcmath, intl, zip
           coverage: none
 
-      - name: Instalar sqlcmd
+      - name: Instalar sqlcmd en el runner
         run: |
-          curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | apt-key add - \
-          && curl -fsSL https://packages.microsoft.com/config/ubuntu/22.04/prod.list \
-            > /etc/apt/sources.list.d/mssql.list \
-          && apt-get update \
-          && ACCEPT_EULA=Y apt-get install -y --no-install-recommends mssql-tools18 unixodbc-dev \
-          && ln -s /opt/mssql-tools18/bin/sqlcmd /usr/local/bin/sqlcmd
+          # ACCEPT_EULA tiene que estar en el entorno del proceso que
+          # instala: sin la variable, apt aborta con un error de dpkg que no
+          # menciona la licencia.
+          # El runner NO es root: corre como el usuario `runner` con sudo
+          # disponible. Escribir en /usr/share/keyrings o en
+          # /etc/apt/sources.list.d sin sudo da "Permission denied" y el
+          # paso muere en el primer comando.
+          #
+          # `sudo tee` y no `> archivo` porque la redireccion la abre la shell
+          # del usuario sin privilegios; tee escribe como root.
+          curl -fsSL https://packages.microsoft.com/keys/microsoft.asc \
+            | sudo gpg --dearmor -o /usr/share/keyrings/microsoft-prod.gpg
+          curl -fsSL https://packages.microsoft.com/config/ubuntu/22.04/prod.list \
+            | sed 's|deb \[|deb [signed-by=/usr/share/keyrings/microsoft-prod.gpg |' \
+            | sudo tee /etc/apt/sources.list.d/mssql-release.list > /dev/null
+          sudo apt-get update
+          ACCEPT_EULA=Y sudo -E apt-get install -y --no-install-recommends \
+            mssql-tools18 unixodbc-dev
 
       - name: Validar composer.json
         run: composer validate --strict
@@ -68,15 +87,15 @@ jobs:
       - name: Instalar dependencias
         run: composer install --no-interaction --prefer-dist --no-progress
 
-      - name: Preparar entorno de pruebas
+      - name: Preparar entorno
         run: |
           cp .env.example .env
           php artisan key:generate --force
-          # Apuntar a SQL Server del service container.
+          # Apuntar al service container del runner.
           php -r "
             \$env = file_get_contents('.env');
             \$env = preg_replace('/^DB_CONNECTION=.*/m', 'DB_CONNECTION=sqlsrv', \$env);
-            \$env = preg_replace('/^DB_HOST=.*/m', 'DB_HOST=localhost', \$env);
+            \$env = preg_replace('/^DB_HOST=.*/m', 'DB_HOST=127.0.0.1', \$env);
             \$env = preg_replace('/^DB_PORT=.*/m', 'DB_PORT=1433', \$env);
             \$env = preg_replace('/^DB_DATABASE=.*/m', 'DB_DATABASE=farmacia_testing', \$env);
             \$env = preg_replace('/^DB_USERNAME=.*/m', 'DB_USERNAME=sa', \$env);
@@ -84,10 +103,48 @@ jobs:
             file_put_contents('.env', \$env);
           "
 
+      - name: Esperar a que SQL Server acepte conexiones
+        run: |
+          # ANTES de intentar cualquier sqlcmd, incluido el CREATE DATABASE.
+          #
+          # El flag `healthy` del service container se decide con un chequeo de
+          # puerto TCP, que responde apenas el socket abre. La instancia puede
+          # tardar unos segundos mas en estar lista para autenticar y ejecutar
+          # T-SQL. Si el CREATE va primero, falla con "Login failed" o
+          # "server was not found", y el reintento de abajo nunca llega a
+          # ejecutarse porque el paso ya murio.
+          #
+          # 30 intentos x 2s = 60s de margen.
+          for i in $(seq 1 30); do
+            if /opt/mssql-tools18/bin/sqlcmd -S 127.0.0.1,1433 -U sa -P 'TestPass1!' -C \
+                 -Q "SELECT 1" > /dev/null 2>&1; then
+              echo "SQL Server acepta conexiones (intento $i)"
+              exit 0
+            fi
+            echo "Esperando a SQL Server... intento $i"
+            sleep 2
+          done
+          echo "SQL Server no acepto conexiones en 60s"
+          exit 1
+
       - name: Crear base de datos
         run: |
-          /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'TestPass1!' -C \
+          # SQL Server no crea bases por su cuenta. A diferencia de MySQL,
+          # que lo hace con la variable MYSQL_DATABASE, la imagen arranca vacia
+          # y hay que crearlas a mano.
+          echo "Creando farmacia_testing..."
+          /opt/mssql-tools18/bin/sqlcmd -S 127.0.0.1,1433 -U sa -P 'TestPass1!' -C \
             -Q "IF DB_ID(N'farmacia_testing') IS NULL CREATE DATABASE farmacia_testing;"
+
+          # Verificar que quedo creada. Si el CREATE fallo en silencio, esto
+          # avisa con un mensaje claro en vez de dejar que las pruebas fallen
+          # despues con "cannot open database".
+          /opt/mssql-tools18/bin/sqlcmd -S 127.0.0.1,1433 -U sa -P 'TestPass1!' -C \
+            -Q "SELECT name FROM sys.databases WHERE name = 'farmacia_testing'" \
+            -h -1 | grep -q farmacia_testing \
+            || { echo "La base farmacia_testing no existe"; exit 1; }
+
+          echo "Base farmacia_testing lista"
 
       - name: Verificar sintaxis PHP
         run: |
@@ -99,11 +156,14 @@ jobs:
             echo "Hay archivos con errores de sintaxis"
             exit 1
           fi
-          echo "Sintaxis correcta en todos los archivos PHP"
+          echo "Sintaxis OK"
 
       - name: Ejecutar pruebas
         run: php artisan test
 
+  # ---------------------------------------------------------------------------
+  # frontend: no necesita base de datos. Corre en paralelo con backend.
+  # ---------------------------------------------------------------------------
   frontend:
     name: Frontend (React)
     runs-on: ubuntu-latest
@@ -127,87 +187,11 @@ jobs:
       - name: Instalar dependencias
         run: npm ci
 
-      - name: Verificar tipos (TypeScript)
+      - name: Verificar tipos
         run: npx tsc --noEmit -p tsconfig.app.json
 
-      - name: Analizar codigo (ESLint)
+      - name: Analizar codigo
         run: npm run lint
 
-      - name: Construir para produccion
+      - name: Construir
         run: npm run build
-
-  docker:
-    name: Docker (imagenes)
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-
-    steps:
-      - name: Descargar codigo
-        uses: actions/checkout@v5
-
-      # Validar que el compose no tiene errores de sintaxis.
-      - name: Validar configuracion de compose
-        run: docker compose config --quiet
-
-      - name: Levantar el stack completo
-        run: docker compose up -d --build
-
-      # /health es publico: el balanceador lo llama sin token. Si responde 200
-      # con {"status":"ok"}, la imagen esta bien construida.
-      - name: Esperar al backend y verificar liveness
-        run: |
-          listo=false
-          for intento in $(seq 1 60); do
-            respuesta=$(curl -s http://localhost:8000/api/health || echo '')
-            if [ "$respuesta" = '{"status":"ok"}' ]; then
-              echo "Backend vivo (intento $intento)"
-              listo=true
-              break
-            fi
-            echo "Esperando al backend... intento $intento"
-            sleep 5
-          done
-
-          if [ "$listo" != "true" ]; then
-            echo "El backend no respondio /health a tiempo"
-            docker compose logs backend --tail 50
-            exit 1
-          fi
-
-      # /ready verifica que la DB responda. Solo si /ready da 200 el orquestador
-      # puede empezar a mandar trafico.
-      - name: Verificar readiness
-        run: |
-          respuesta=$(curl -s http://localhost:8000/api/ready)
-          echo "$respuesta"
-
-          if ! echo "$respuesta" | grep -q '"database":"connected"'; then
-            echo "/ready indica que la base no esta conectada"
-            docker compose logs db --tail 30
-            exit 1
-          fi
-          echo "Readiness OK: base de datos conectada"
-
-      # Login con las credenciales del seeder. Si devuelve token, el seed sirvio.
-      - name: Verificar login
-        run: |
-          respuesta=$(curl -s -X POST http://localhost:8000/api/login \
-            -H 'Content-Type: application/json' \
-            -H 'Accept: application/json' \
-            -d '{"name":"admin","password":"password"}')
-          echo "$respuesta"
-
-          case "$respuesta" in
-            *'"token"'*) echo "Login correcto: seed aplicado" ;;
-            *) echo "El login no devolvio token"; exit 1 ;;
-          esac
-
-      - name: Logs del backend en caso de fallo
-        if: failure()
-        run: docker compose logs backend --tail 100
-
-      # always() para que se limpie aunque un paso anterior falle. Sin esto los
-      # contenedores quedan activos en el runner.
-      - name: Apagar el stack
-        if: always()
-        run: docker compose down -v

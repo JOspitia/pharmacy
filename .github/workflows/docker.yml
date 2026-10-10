@@ -1,0 +1,85 @@
+name: Docker
+
+# Solo corre cuando cambian archivos que afectan a las imagenes.
+#
+# El filtro de paths es lo que hace que un commit chico NO reconstruya Docker.
+# Cambiar un controller, un test o un documento no toca las imagenes, asi que
+# este workflow ni se dispara. Es la diferencia entre 3 minutos de feedback y
+# 15.
+on:
+  push:
+    branches: [main]
+    paths:
+      # Las imagenes mismas.
+      - 'back/Dockerfile'
+      - 'frontend/Dockerfile'
+      - '.dockerignore'
+      - 'back/.dockerignore'
+      - 'frontend/.dockerignore'
+      # El orquestador.
+      - 'docker-compose.yml'
+      # Las dependencias: cambiarlas cambia lo que va dentro de la imagen.
+      - 'back/composer.json'
+      - 'back/composer.lock'
+      - 'frontend/package.json'
+      - 'frontend/package-lock.json'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'back/Dockerfile'
+      - 'frontend/Dockerfile'
+      - '.dockerignore'
+      - 'back/.dockerignore'
+      - 'frontend/.dockerignore'
+      - 'docker-compose.yml'
+      - 'back/composer.json'
+      - 'back/composer.lock'
+      - 'frontend/package.json'
+      - 'frontend/package-lock.json'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Construir imagenes
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Descargar codigo
+        uses: actions/checkout@v5
+
+      - name: Validar configuracion de compose
+        run: docker compose config --quiet
+
+      - name: Configurar Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # cache-from type=gha reutiliza las capas entre corridas. Sin esto, cada
+      # push que toca un Dockerfile recompila todo desde cero.
+      - name: Construir imagen backend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./back
+          push: false
+          tags: pharmacy-backend:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Construir imagen frontend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          push: false
+          tags: pharmacy-frontend:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # No se levanta el stack aqui. El build ya valida que el Dockerfile
+      # funciona; levantar el stack completo lleva ~5 minutos extra y lo hace
+      # release.yml, que es donde importa probar que la imagen anda de verdad.
+      #
+      # push: false en los dos builds: este workflow no publica nada. Publicar
+      # en ghcr.io es responsabilidad de release.yml, que corre solo con tags.
