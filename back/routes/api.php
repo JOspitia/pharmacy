@@ -30,44 +30,73 @@ Route::post('/login', [AuthController::class, 'login']);
 // Rutas protegidas por Sanctum
 Route::middleware('auth:sanctum')->group(function () {
 
+    // UserResource y no el modelo crudo: el rol ahora es una relacion, y
+    // devolverlo sin serializar anidaria el objeto Role entero en la respuesta.
     Route::get('/user', function (Request $request) {
-        return $request->user();
+        return new \App\Http\Resources\UserResource($request->user());
     });
 
     // Autenticación
     Route::post('/logout', [AuthController::class, 'logout']);
 
-    // Listados para selects
-    Route::get('groups/select', [GroupController::class, 'select']);
+    // units/select queda fuera de los grupos a proposito: es un catalogo de
+    // referencia que alimenta los formularios de productos y de lotes, y no
+    // tiene permisos propios. Protegerlo exigiria duplicar en un modulo
+    // inexistente el permiso de productos y el de lotes, y el que se eligiera
+    // dejaria al otro rol sin acceso a su propio formulario.
     Route::get('units/select', [UnitController::class, 'select']);
 
-    // Grupos
-    Route::patch('groups/{group}/toggle-status', [GroupController::class, 'toggleStatus']);
-    Route::apiResource('groups', GroupController::class);
+    // ------------------------------------------------------------------
+    // Permisos por módulo
+    //
+    // El nombre del módulo coincide con el prefijo de ruta, y el permiso
+    // concreto lo deduce EnsureModule del verbo HTTP. Por eso el listado y
+    // el borrado de la misma entidad conviven en un único grupo: antes, con
+    // un middleware por rol, Limitarlos pedía abrir un grupo aparte.
+    // ------------------------------------------------------------------
 
-    // Bodegas
-    Route::patch('bodegas/{bodega}/toggle-status', [BodegaController::class, 'toggleStatus']);
-    Route::apiResource('bodegas', BodegaController::class);
+    Route::middleware('module:groups')->group(function () {
+        // Listados para selects
+        Route::get('groups/select', [GroupController::class, 'select']);
 
-    // Productos
-    Route::get('products/form-data', [ProductController::class, 'formData']);
-    Route::patch('products/{product}/toggle-status', [ProductController::class, 'toggleStatus']);
-    Route::apiResource('products', ProductController::class);
+        Route::patch('groups/{group}/toggle-status', [GroupController::class, 'toggleStatus']);
+        Route::apiResource('groups', GroupController::class);
+    });
 
-    // Lotes
-    Route::get('lots/form-data', [LotController::class, 'formData']);
-    Route::patch('lots/{lot}/toggle-status', [LotController::class, 'toggleStatus']);
-    Route::apiResource('lots', LotController::class);
+    Route::middleware('module:products')->group(function () {
+        Route::get('products/form-data', [ProductController::class, 'formData']);
+        Route::patch('products/{product}/toggle-status', [ProductController::class, 'toggleStatus']);
+        Route::apiResource('products', ProductController::class);
+    });
 
-    // Sensores
-    Route::get('sensors/form-data', [SensorController::class, 'formData']);
-    Route::patch('sensors/{sensor}/toggle-status', [SensorController::class, 'toggleStatus']);
-    Route::apiResource('sensors', SensorController::class);
+    Route::middleware('module:warehouses')->group(function () {
+        Route::patch('bodegas/{bodega}/toggle-status', [BodegaController::class, 'toggleStatus']);
+        Route::apiResource('bodegas', BodegaController::class);
+    });
 
-    // Lecturas
-    Route::get('bodegas/{bodega}/readings', [ReadingController::class, 'index']);
-    Route::get('bodegas/{bodega}/alerts', [ReadingController::class, 'alerts']);
+    Route::middleware('module:lots')->group(function () {
+        Route::get('lots/form-data', [LotController::class, 'formData']);
+        Route::patch('lots/{lot}/toggle-status', [LotController::class, 'toggleStatus']);
+        Route::apiResource('lots', LotController::class);
+    });
 
-    // Reportes
-    Route::get('reportes/inventario', [ReportController::class, 'index']);
+    // Sensores y lecturas van en el mismo grupo a propósito: las lecturas
+    // cuelgan de una bodega en la URL (bodegas/{id}/readings) pero describen
+    // el estado ambiental de un sensor, que es lo que el usuario viene a
+    // mirar. Ponerlas en module:warehouses haría que un auxiliar pudiera leer
+    // alertas de temperatura sin acceso a sensores, que es justo lo que la
+    // matriz le niega.
+    Route::middleware('module:sensors')->group(function () {
+        Route::get('sensors/form-data', [SensorController::class, 'formData']);
+        Route::patch('sensors/{sensor}/toggle-status', [SensorController::class, 'toggleStatus']);
+        Route::apiResource('sensors', SensorController::class);
+
+        // Lecturas
+        Route::get('bodegas/{bodega}/readings', [ReadingController::class, 'index']);
+        Route::get('bodegas/{bodega}/alerts', [ReadingController::class, 'alerts']);
+    });
+
+    Route::middleware('module:reports')->group(function () {
+        Route::get('reportes/inventario', [ReportController::class, 'index']);
+    });
 });

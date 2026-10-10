@@ -3,6 +3,10 @@
 namespace Tests\Feature;
 
 use App\Models\User;
+use Database\Seeders\ModuleSeeder;
+use Database\Seeders\PermissionSeeder;
+use Database\Seeders\RolePermissionSeeder;
+use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Gate;
 use Tests\TestCase;
@@ -18,6 +22,20 @@ class UserRoleTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // Los Gates de capacidad se resuelven contra la tabla permissions.
+        // Con RefreshDatabase la base queda vacia, asi que sin sembrar el
+        // catalogo y la matriz ningun permiso existiria y todas las
+        // capacidades se denegarian.
+        $this->seed(RoleSeeder::class);
+        $this->seed(ModuleSeeder::class);
+        $this->seed(PermissionSeeder::class);
+        $this->seed(RolePermissionSeeder::class);
+    }
+
     // ------------------------------------------------------------------
     // Estructura del dato
     // ------------------------------------------------------------------
@@ -26,31 +44,33 @@ class UserRoleTest extends TestCase
     {
         $usuario = User::factory()->create();
 
-        $this->assertSame('auxiliar_farmacia', $usuario->role);
-    }
-
-    public function test_has_any_role_reconoce_solo_los_indicados(): void
-    {
-        $regente = User::factory()->regente()->create();
-
-        $this->assertTrue($regente->hasAnyRole(['regente_farmacia']));
-        $this->assertTrue($regente->hasAnyRole(['medico', 'regente_farmacia']));
-        $this->assertFalse($regente->hasAnyRole(['medico', 'auditor']));
+        $this->assertSame('auxiliar_farmacia', $usuario->role->name);
     }
 
     // ------------------------------------------------------------------
-    // admin: satisface todo
+    // admin: solo lo que la matriz le da
     // ------------------------------------------------------------------
 
-    public function test_admin_pasa_cualquier_comprobacion_de_rol(): void
+    /**
+     * El administrador ya no pasa todo.
+     *
+     * Antes Gate::before devolvia true para cualquier admin. Eso rompia RN-05
+     * y RN-08: el administrador terminaba siendo el segundo control que el
+     * enunciado exige que sea un regente, y podia aprobar su propio traslado.
+     * Ahora la matriz es la unica fuente.
+     */
+    public function test_admin_solo_pasa_las_capacidades_de_su_matriz(): void
     {
         $admin = User::factory()->admin()->create();
 
-        $this->assertTrue($admin->isAdmin());
-        $this->assertTrue(Gate::forUser($admin)->allows('aprobar-traslado'));
+        // Administrativas: las tiene, es para eso que existe el rol.
         $this->assertTrue(Gate::forUser($admin)->allows('gestionar-usuarios'));
-        // Capacidad no enumerada: admin debe pasar igual.
-        $this->assertTrue(Gate::forUser($admin)->allows('capacidad-inexistente'));
+        $this->assertTrue(Gate::forUser($admin)->allows('gestionar-catalogos'));
+
+        // Clinicas: no las tiene, y por eso el bypass no hace falta. RN-05 y
+        // RN-08 exigen que el segundo control sea un regente, no un admin.
+        $this->assertFalse(Gate::forUser($admin)->allows('aprobar-traslado'));
+        $this->assertFalse(Gate::forUser($admin)->allows('autorizar-control-especial'));
     }
 
     // ------------------------------------------------------------------
