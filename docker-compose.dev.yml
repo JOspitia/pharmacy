@@ -58,9 +58,19 @@ services:
       - ./frontend/vite.config.ts:/app/vite.config.ts
       - ./frontend/tsconfig.json:/app/tsconfig.json
       - ./frontend/package.json:/app/package.json
+      # Playwright E2E: el config y la carpeta test/ viven en el host
+      # para no contaminar la imagen de produccion. Se montan explicitamente
+      # porque el override base solo incluye los sources que Vite usa.
+      - ./frontend/playwright.config.ts:/app/playwright.config.ts
+      - ./frontend/test:/app/test
     environment:
       # Forzar a Vite a usar polling en vez de eventos nativos. Sin esto,
       # dentro de un contenedor de Docker Desktop sobre Windows los
       # cambios en archivos bind-mounted no se notan y el HMR queda sordo.
       - CHOKIDAR_USEPOLLING=true
       - WATCHPACK_POLLING=true
+      # VITE_API_TARGET lo lee vite.config.ts para el proxy de /api/*. El
+      # dev override pisa el environment del base, asi que hay que
+      # volver a setearlo: dentro de Docker el backend no es localhost
+      # sino el nombre del servicio "backend".
+      - VITE_API_TARGET=http://backend:8000
