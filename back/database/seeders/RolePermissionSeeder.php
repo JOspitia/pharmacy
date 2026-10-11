@@ -169,6 +169,8 @@ class RolePermissionSeeder extends Seeder
                 'sensors' => self::LECTURA,
                 'reports' => self::LECTURA,
                 'users' => self::ACCIONES,
+                // HU-08 §7: admin consulta e ingresa movimientos.
+                'kardex' => ['can_read', 'can_create'],
             ],
 
             // Opera el dia a dia. Sensores y reportes los consulta pero no los
@@ -180,6 +182,8 @@ class RolePermissionSeeder extends Seeder
                 'lots' => self::ACCIONES,
                 'sensors' => self::LECTURA,
                 'reports' => self::LECTURA,
+                // HU-08 §7: regente consulta y ajusta inventario.
+                'kardex' => ['can_read', 'can_create'],
             ],
 
             // Carga y consulta stock. Sin delete porque el historico de lotes
@@ -190,6 +194,8 @@ class RolePermissionSeeder extends Seeder
                 'products' => self::LECTURA,
                 'lots' => self::LECTURA_Y_ESCRITURA,
                 'reports' => self::LECTURA,
+                // HU-08 §7: auxiliar consulta inventario.
+                'kardex' => self::LECTURA,
             ],
 
             // Consulta inventario y reportes. Ni grupos ni creacion: el medico
@@ -199,6 +205,8 @@ class RolePermissionSeeder extends Seeder
                 'products' => self::LECTURA,
                 'lots' => self::LECTURA,
                 'reports' => self::LECTURA,
+                // HU-08 §7: medico consulta kardex.
+                'kardex' => self::LECTURA,
             ],
 
             // Solo lectura en todo, como corresponde a un auditor.
@@ -209,6 +217,8 @@ class RolePermissionSeeder extends Seeder
                 'lots' => self::LECTURA,
                 'sensors' => self::LECTURA,
                 'reports' => self::LECTURA,
+                // HU-08 §7: auditor consulta kardex.
+                'kardex' => self::LECTURA,
             ],
         ];
     }

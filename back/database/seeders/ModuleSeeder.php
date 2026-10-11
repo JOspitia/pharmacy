@@ -59,6 +59,22 @@ class ModuleSeeder extends Seeder
                 'name' => 'users',
                 'description' => 'Administracion de usuarios del sistema',
             ],
+            [
+                'name' => 'kardex',
+                'description' => 'Consultas de kardex e inventario',
+            ],
+            [
+                'name' => 'transfers',
+                'description' => 'Traslados entre bodegas',
+            ],
+            [
+                'name' => 'patients',
+                'description' => 'Gestion de pacientes',
+            ],
+            [
+                'name' => 'prescriptions',
+                'description' => 'Gestion de prescripciones medicas',
+            ],
         ];
 
         foreach ($modules as $module) {
