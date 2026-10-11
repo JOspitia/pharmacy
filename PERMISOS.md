@@ -1,6 +1,6 @@
 # Permisos del sistema — Roles y Matriz de Acceso
 
-> Generado: HU-07 (Auth), HU-08 (Kardex + Inventarios)
+> Generado: HU-07 (Auth), HU-08 (Kardex + Inventarios), HU-09 (Traslados entre bodegas)
 > Fuente: `back/database/seeders/RolePermissionSeeder.php`
 
 ---
@@ -28,6 +28,7 @@ Todos comparten la misma contraseña: **`password`**
 | **Productos**| C R U D | C R U D | R | R | R |
 | **Lotes**    | R | C R U D | R U | R | R |
 | **Kardex**   | R C | R C | R | R | R |
+| **Traslados**| R | C R U D | R C U | R | R |
 | **Sensores** | R | R | — | — | R |
 | **Reportes** | R | R | R | R | R |
 | **Usuarios** | C R U D | — | — | — | — |
@@ -45,6 +46,11 @@ Todos comparten la misma contraseña: **`password`**
 - **Auxiliar en Bodegas**: solo `LECTURA`. No puede crear, actualizar ni eliminar bodegas.
 - **Auxiliar en Kardex**: solo `LECTURA`. Puede ver movimientos pero no crear nuevos.
 - **Médico en Grupos**: no tiene acceso. Un médico no necesita ver grupos de productos.
+- **Traslados (HU-09)**: el slug del módulo en el seeder es `transfers`.
+  - **Admin, médico y auditor**: solo `LECTURA`. Ninguno opera traslados.
+  - **Regente**: `ACCIONES` completas — es el único rol que recorre el ciclo completo (solicita, aprueba, despacha, recibe, anula).
+  - **Auxiliar**: `['can_read', 'can_create', 'can_update']`. Sin `can_delete` porque el historial de traslados no se borra desde la interfaz. No tiene `anular-traslado`: anular es una decisión autoritativa y le corresponde al regente, igual que aprobar y despachar.
+- **Segregación de duties (RN-08)**: quien solicita un traslado **no** puede aprobarlo, aunque tenga el permiso `aprobar-traslado`. Con los usuarios de demo (un único regente), esto significa que un traslado creado por `regente` **no puede ser aprobado por nadie**: hay que crearlo con `auxiliar` y aprobarlo con `regente`.
 
 ---
 
@@ -56,14 +62,18 @@ Todos comparten la misma contraseña: **`password`**
 | gestionar-catalogos            | ✅    | —       | —        | —      | —       |
 | dispensar                      | —     | ✅      | ✅       | —      | —       |
 | consultar-inventario           | —     | ✅      | ✅       | ✅      | ✅      |
-| crear-traslado                 | —     | ✅      | ✅       | —      | —       |
-| recibir-traslado               | —     | ✅      | ✅       | —      | —       |
-| aprobar-traslado               | —     | ✅      | —        | —      | —       |
-| autorizar-control-especial     | —     | ✅      | —        | —      | —       |
-| ajustar-inventario             | —     | ✅      | —        | —      | —       |
 | crear-prescripcion             | —     | —       | —        | ✅      | —       |
 | consultar-pacientes            | —     | —       | —        | ✅      | —       |
 | consultar-pacientes-enmascarados | —   | —       | —        | —      | ✅      |
+| consultar-traslados            | ✅    | ✅      | ✅       | ✅      | ✅      |
+| crear-traslado                 | —     | ✅      | ✅       | —      | —       |
+| aprobar-traslado               | —     | ✅      | —        | —      | —       |
+| despachar-traslado             | —     | ✅      | —        | —      | —       |
+| recibir-traslado               | —     | ✅      | ✅       | —      | —       |
+| anular-traslado                | —     | ✅      | —        | —      | —       |
+| resolver-discrepancia          | —     | ✅      | —        | —      | —       |
+| autorizar-control-especial     | —     | ✅      | —        | —      | —       |
+| ajustar-inventario             | —     | ✅      | —        | —      | —       |
 
 ---
 
@@ -71,6 +81,7 @@ Todos comparten la misma contraseña: **`password`**
 
 - **RN-06**: Kardex es inmutable → `can_update` y `can_delete` no existen en el módulo `kardex` para ningún rol.
 - **RN-05 / RN-08**: El stock vive en el Kardex, no en el lote → el auxiliar crea movimientos, no lotes directamente.
+- **RN-08 (HU-09)**: El aprobador de un traslado debe ser distinto de quien lo solicitó. Es una separación de funciones: quien pide el movimiento no es quien lo autoriza. El permiso `aprobar-traslado` por sí solo no alcanza — el backend compara `requested_by` con el usuario autenticado y rechaza con 422.
 - **HU-08 §7**: Admin y regente consultan e ingresan movimientos de Kardex.
 - Un admin sin `gestionar-catalogos` contradictorio → admin tiene escritura en groups y products.
 - Auditor: solo lectura en todo, como corresponde a un rol de auditoría.

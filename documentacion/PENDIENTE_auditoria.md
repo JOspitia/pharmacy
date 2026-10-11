@@ -214,6 +214,53 @@ Notas de diseño:
   (`¿puede aprobar un traslado?`). Si más adelante se necesita "este regente puede aprobar
   *este* traslado en particular", corresponde una Policy.
 
+#### Hallazgo: las capacidades nunca se exigían en los endpoints — ✅ RESUELTO (HU-09)
+
+**Síntoma:** el middleware `EnsureModule` solo conoce el verbo HTTP. Traduce
+`PATCH → transfers.can_update`, y el auxiliar **tiene** `can_update` sobre `transfers`
+(el seeder le da `['can_read','can_create','can_update']`). Como todos los verbos de la
+máquina de estados de traslados son PATCH, el auxiliar pasaba el filtro para aprobar,
+despachar, anular y resolver discrepancias.
+
+Peor: las capacidades existían en la base y en `PERMISOS.md`, pero **ningún código las
+consultaba**. `Gate::before` estaba registrado y `PermissionCapabilitiesTest` verificaba
+que `$user->can('aprobar-traslado')` devolviera el booleano correcto — o sea, probaba que
+el Gate *respondía bien*, no que *alguien preguntara*. Los 153 tests pasaban con el hueco
+abierto.
+
+| Acción | Ruta | Exigía realmente | ¿Tenía auxiliar? | Antes del fix |
+|---|---|---|---|---|
+| Aprobar | `PATCH /approve` | `transfers.can_update` | sí | **podía** |
+| Despachar | `PATCH /dispatch` | `transfers.can_update` | sí | **podía** |
+| Anular | `PATCH /cancel` | `transfers.can_update` | sí | **podía** |
+| Resolver discrepancia | `PATCH /discrepancies/{id}/resolve` | `transfers.can_update` | sí | **podía** |
+
+**Resolución:** cada acción autoritativa consulta su capacidad en el service, que es donde
+vive la lógica de negocio:
+
+```php
+// back/app/Services/TransferService.php
+Gate::forUser($usuario)->authorize('aprobar-traslado');      // en aprobar()
+Gate::forUser($usuario)->authorize('despachar-traslado');    // en despachar()
+Gate::forUser($usuario)->authorize('anular-traslado');       // en anular()
+Gate::forUser($usuario)->authorize('resolver-discrepancia'); // en resolverDiscrepancia()
+```
+
+Se usa `Gate::forUser()->authorize()` y no `$usuario->authorize()` porque el trait
+`Authorizable` de esta versión de Laravel expone `can()`, `cant()` y `cannot()`, pero **no**
+`authorize()`; llamar al método inexistente daba `BadMethodCallException` (HTTP 500).
+`Gate::authorize()` lanza `AuthorizationException`, que el handler de Laravel traduce a
+**403** — a diferencia de `KardexStateException`, que renderiza 422 y significaría "error de
+negocio" en vez de "no autorizado".
+
+**Verificado** contra la base de desarrollo: el auxiliar queda `transfers.can_update = SI`
+pero `aprobar / anular / resolver = no`, y `Gate::forUser($auxiliar)->authorize(...)` lanza
+`AuthorizationException` en las cuatro capacidades, mientras el regente pasa en todas.
+
+**Cobertura pendiente:** `crear-traslado` y `recibir-traslado` tampoco se exigen en el
+service. Hoy no abren ningún hueco (los dos roles con permiso CRUD sobre `transfers` ya los
+tienen en la matriz), pero quedan como deuda del mismo tipo.
+
 #### Hallazgo: el Gate::before de admin rompía RN-05 — ✅ RESUELTO
 
 El hallazgo documentaba que `Gate::before` con bypass de admin hacía que `admin`
