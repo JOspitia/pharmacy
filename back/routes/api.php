@@ -157,6 +157,11 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::patch('transfers/{id}/dispatch', [TransferController::class, 'dispatchTransfer']);
         Route::patch('transfers/{id}/receive', [TransferController::class, 'receive']);
         Route::patch('transfers/{id}/cancel', [TransferController::class, 'cancel']);
+        // RN-07: cerrar una discrepancia sin tocar stock.
+        Route::patch(
+            'transfers/{id}/discrepancies/{discrepancyId}/resolve',
+            [TransferController::class, 'resolveDiscrepancy']
+        );
     });
 
     // PUT/DELETE explicitos no se registran: un traslado no se

@@ -5,9 +5,11 @@ namespace App\Http\Controllers;
 use App\Http\Requests\ApproveTransferRequest;
 use App\Http\Requests\CancelTransferRequest;
 use App\Http\Requests\ReceiveTransferRequest;
+use App\Http\Requests\ResolveDiscrepancyRequest;
 use App\Http\Requests\StoreTransferRequest;
 use App\Http\Resources\TransferResource;
 use App\Models\Transfer;
+use App\Models\TransferDiscrepancy;
 use App\Services\TransferService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -21,13 +23,14 @@ use Illuminate\Http\Request;
  *
  * Endpoints:
  *
- *   GET    /api/transfers                  index   (listar con filtros)
- *   GET    /api/transfers/{id}             show    (detalle)
- *   POST   /api/transfers                  store   (crear en DRAFT)
- *   PATCH  /api/transfers/{id}/approve     approve (RN-08 + RN-01)
- *   PATCH  /api/transfers/{id}/dispatch    dispatch (TRANSFER_OUT)
- *   PATCH  /api/transfers/{id}/receive     receive  (TRANSFER_IN + discrepancias)
- *   PATCH  /api/transfers/{id}/cancel      cancel   (is_cancellable)
+ *   GET    /api/transfers                       index   (listar con filtros)
+ *   GET    /api/transfers/{id}                  show    (detalle)
+ *   POST   /api/transfers                       store   (crear en DRAFT)
+ *   PATCH  /api/transfers/{id}/approve          approve (RN-08 + RN-01)
+ *   PATCH  /api/transfers/{id}/dispatch         dispatch (TRANSFER_OUT)
+ *   PATCH  /api/transfers/{id}/receive          receive  (TRANSFER_IN + discrepancias)
+ *   PATCH  /api/transfers/{id}/cancel           cancel   (is_cancellable)
+ *   PATCH  /api/transfers/{id}/discrepancies/{did}/resolve  (RN-07: resolver discrepancia)
  *
  * El `module:transfers` middleware se encarga del 403 segun rol.
  * El service valida las reglas de negocio (RN-01, RN-08, RN-07,
@@ -38,6 +41,29 @@ class TransferController extends Controller
     public function __construct(private readonly TransferService $service)
     {
     }
+
+    /**
+     * Lista canonica de relaciones que necesita el TransferResource
+     * para renderizar el detalle completo. Centralizada aca para que
+     * show() / store() / resolveDiscrepancy() y futuros endpoints
+     * compartan el mismo shape: si se agrega una relacion, se cambia
+     * en un solo lugar.
+     */
+    private const DETAIL_RELATIONS = [
+        'items',
+        'items.inventory.lot',
+        'items.inventory.product',
+        'items.inventory.bodega',
+        'status',
+        'bodegaOrigen',
+        'bodegaDestino',
+        'requestedBy',
+        'approvedBy',
+        'dispatchedBy',
+        'receivedBy',
+        'cancelledBy',
+        'discrepancies',
+    ];
 
     /**
      * GET /api/transfers
@@ -76,13 +102,7 @@ class TransferController extends Controller
      */
     public function show(string $id): JsonResponse
     {
-        $transfer = Transfer::with([
-            'items', 'items.inventory.lot', 'items.inventory.product', 'items.inventory.bodega',
-            'status',
-            'bodegaOrigen', 'bodegaDestino',
-            'requestedBy', 'approvedBy', 'dispatchedBy', 'receivedBy', 'cancelledBy',
-            'discrepancies',
-        ])->findOrFail($id);
+        $transfer = Transfer::with(self::DETAIL_RELATIONS)->findOrFail($id);
 
         return response()->json([
             'data' => new TransferResource($transfer),
@@ -115,13 +135,7 @@ class TransferController extends Controller
         // load('items') no encuentra nada porque hace WHERE con el id
         // viejo (minusculas) contra la BD (mayusculas).
         $transfer->refresh();
-
-        $transfer->load([
-            'items', 'items.inventory.lot', 'items.inventory.product', 'items.inventory.bodega',
-            'status',
-            'bodegaOrigen', 'bodegaDestino',
-            'requestedBy',
-        ]);
+        $transfer->load(self::DETAIL_RELATIONS);
 
         return response()->json([
             'data' => new TransferResource($transfer),
@@ -208,6 +222,40 @@ class TransferController extends Controller
             $request->validated()['reason'] ?? null,
             $request->user()
         );
+
+        return response()->json([
+            'data' => new TransferResource($transfer),
+        ]);
+    }
+
+    /**
+     * PATCH /api/transfers/{id}/discrepancies/{discrepancyId}/resolve
+     *
+     * RN-07: cierra una discrepancia pendiente. No mueve stock
+     * (RN-06: el Kardex es inmutable). Cuando todas las discrepancias
+     * del traslado quedan RESOLVED o WRITTEN_OFF, el traslado pasa a
+     * RECEIVED automaticamente.
+     */
+    public function resolveDiscrepancy(
+        ResolveDiscrepancyRequest $request,
+        string $id,
+        string $discrepancyId,
+    ): JsonResponse {
+        $transfer = Transfer::findOrFail($id);
+        $discrepancia = TransferDiscrepancy::findOrFail($discrepancyId);
+
+        $this->service->resolverDiscrepancia(
+            $transfer,
+            $discrepancia,
+            $request->validated()['action'],
+            $request->validated()['notes'] ?? null,
+            $request->user(),
+        );
+
+        // El status del traslado puede haber cambiado (RECEIVED si era
+        // la ultima discrepancia pendiente). Recargar con todas las
+        // relaciones que el resource necesita para pintar el detalle.
+        $transfer = $transfer->fresh(self::DETAIL_RELATIONS);
 
         return response()->json([
             'data' => new TransferResource($transfer),
