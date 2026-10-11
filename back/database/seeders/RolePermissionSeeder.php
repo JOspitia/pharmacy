@@ -171,6 +171,8 @@ class RolePermissionSeeder extends Seeder
                 'users' => self::ACCIONES,
                 // HU-08 §7: admin consulta e ingresa movimientos.
                 'kardex' => ['can_read', 'can_create'],
+                // HU-09: admin consulta (no crea/aprueba/despacha/recibe).
+                'transfers' => self::LECTURA,
             ],
 
             // Opera el dia a dia. Sensores y reportes los consulta pero no los
@@ -184,6 +186,9 @@ class RolePermissionSeeder extends Seeder
                 'reports' => self::LECTURA,
                 // HU-08 §7: regente consulta y ajusta inventario.
                 'kardex' => ['can_read', 'can_create'],
+                // HU-09: regente hace todo el ciclo del traslado
+                // (solicita, aprueba, despacha, recibe, anula).
+                'transfers' => self::ACCIONES,
             ],
 
             // Carga y consulta stock. Sin delete porque el historico de lotes
@@ -196,6 +201,11 @@ class RolePermissionSeeder extends Seeder
                 'reports' => self::LECTURA,
                 // HU-08 §7: auxiliar consulta inventario.
                 'kardex' => self::LECTURA,
+                // HU-09: auxiliar solicita y recibe traslados, pero
+                // no aprueba ni despacha ni anula. Sin can_delete
+                // porque el historial de traslados no se borra desde
+                // la interfaz.
+                'transfers' => ['can_read', 'can_create', 'can_update'],
             ],
 
             // Consulta inventario y reportes. Ni grupos ni creacion: el medico
@@ -207,6 +217,8 @@ class RolePermissionSeeder extends Seeder
                 'reports' => self::LECTURA,
                 // HU-08 §7: medico consulta kardex.
                 'kardex' => self::LECTURA,
+                // HU-09: medico consulta traslados.
+                'transfers' => self::LECTURA,
             ],
 
             // Solo lectura en todo, como corresponde a un auditor.
@@ -219,6 +231,8 @@ class RolePermissionSeeder extends Seeder
                 'reports' => self::LECTURA,
                 // HU-08 §7: auditor consulta kardex.
                 'kardex' => self::LECTURA,
+                // HU-09: auditor consulta traslados.
+                'transfers' => self::LECTURA,
             ],
         ];
     }
@@ -245,12 +259,15 @@ class RolePermissionSeeder extends Seeder
             'admin' => [
                 'gestionar-usuarios',
                 'gestionar-catalogos',
+                'consultar-traslados',
             ],
             'auxiliar_farmacia' => [
                 'dispensar',
                 'consultar-inventario',
                 'crear-traslado',
                 'recibir-traslado',
+                'anular-traslado',
+                'consultar-traslados',
             ],
             'regente_farmacia' => [
                 'dispensar',
@@ -258,17 +275,22 @@ class RolePermissionSeeder extends Seeder
                 'crear-traslado',
                 'recibir-traslado',
                 'aprobar-traslado',
+                'despachar-traslado',
+                'anular-traslado',
                 'autorizar-control-especial',
                 'ajustar-inventario',
+                'consultar-traslados',
             ],
             'medico' => [
                 'consultar-inventario',
                 'crear-prescripcion',
                 'consultar-pacientes',
+                'consultar-traslados',
             ],
             'auditor' => [
                 'consultar-inventario',
                 'consultar-pacientes-enmascarados',
+                'consultar-traslados',
             ],
         ];
     }
