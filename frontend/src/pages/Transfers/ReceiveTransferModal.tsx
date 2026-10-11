@@ -184,17 +184,15 @@ export function ReceiveTransferModal({
       align: 'center',
       render: (_, record) => {
         const approved = record.approved_quantity ?? record.requested_quantity
+        const delivered = record.delivered_quantity_input ?? 0
         return (
           <span
             style={{
-              color:
-                record.delivered_quantity_input < approved ? '#d4380d' : '#16a34a',
+              color: delivered < approved ? '#d4380d' : '#16a34a',
               fontWeight: 600,
             }}
           >
-            {record.delivered_quantity_input < approved
-              ? `+${approved - record.delivered_quantity_input}`
-              : '—'}
+            {delivered < approved ? `+${approved - delivered}` : '—'}
           </span>
         )
       },
