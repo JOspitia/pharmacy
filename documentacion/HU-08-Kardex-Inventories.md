@@ -227,8 +227,10 @@ InventoryResource
 
 - Sin feature toggles ni comportamiento específico por tenant.
 - KardexService se registra como singleton en `AppServiceProvider`.
-- Tipos de movimiento como constantes en `MovementType` (PHP enum).
-- KardexService lanza excepciones tipadas: `InsufficientStockException`, `InvalidMovementException`.
+- Tipos de movimiento como datos en la tabla `movement_types` (no como constantes en PHP). El catálogo vive en la tabla y se consulta por `name`.
+- KardexService lanza excepciones tipadas: `StockInsuficienteException` (422) y `KardexStateException` (422). `ModelNotFoundException` se traduce a 404 vía el handler por defecto de Laravel.
+
+> **Convención de nombres (AI_USAGE.md §4.1):** los identificadores técnicos (`name` en `movement_types`, `name` en `transfer_statuses`, `type` en `movements`) van en inglés. La traducción al español vive en campos separados (`description`, `label`). Ejemplo: el tipo `ENTRY` (inglés, en `name`) tiene `description = 'Ingreso de mercancia'` (español, texto de UI). Esto explica por qué en los response de la API el `type` aparece como `ENTRY` y no `ENTRADA`.
 
 ---
 
@@ -315,6 +317,41 @@ Los permisos de traslados se definen exclusivamente en `HU-09-Traslados.md` §6.
 
 ## 10. Contrato de API
 
+> **Identificadores en inglés:** los campos `type` (en POST /api/movements) y `name` (en GET /api/movements, filtro `?type=`) aceptan los nombres técnicos de la tabla `movement_types`: `ENTRY`, `ADJUSTMENT`, `TRANSFER_OUT`, `TRANSFER_IN`, `DISPENSATION`, `WITHDRAWAL`. Ver convención de nombres arriba.
+
+### GET /api/warehouses/{id}/lots
+
+Lotes con existencia en una bodega. Alimenta el selector de lote del formulario de Kardex (CA-12).
+
+**Filtros:** ninguno. La bodega viene por la URL.
+
+**Response:**
+```json
+{
+  "data": [
+    {
+      "id": "uuid",
+      "name": "LOTE-2026-001",
+      "expiration_date": "2026-11-10",
+      "days_until_expiration": 30,
+      "stock": 50,
+      "min_stock": 20,
+      "product": {
+        "id": "uuid",
+        "name": "Acetaminofén 500mg",
+        "cum": "19903678-1"
+      }
+    }
+  ]
+}
+```
+
+Notas:
+- Solo aparecen lotes con `quantity > 0` en la bodega.
+- Orden FEFO (`expiration_date ASC`).
+- `stock` y `min_stock` son los de ESA bodega, no los globales del lote.
+- `product.cum` (Código Único de Medicamento colombiano) es el identificador local del producto, no SKU genérico.
+
 ### GET /api/inventories
 
 **Filtros:**
@@ -374,21 +411,22 @@ Los permisos de traslados se definen exclusivamente en `HU-09-Traslados.md` §6.
 {
   "lot_id": "uuid",
   "warehouse_id": "uuid",
-  "type": "ENTRADA",
+  "type": "ENTRY",
   "quantity": 100,
   "reason": "Recepción OC-2026-0042"
 }
 ```
 
 **Validaciones en `StoreMovementRequest`:**
-1. `lot_id` — existe en la tabla lots
-2. `warehouse_id` — existe en la tabla bodegas
+1. `lot_id` — existe en la tabla lots (y está activo)
+2. `warehouse_id` — existe en la tabla bodegas (y está activa)
 3. La existencia (warehouse_id, product_id, lot_id) se resuelve con `firstOrCreate`; el lote aporta `product_id` y la bodega la aporta el usuario
-4. `type` ∈ {ENTRADA, AJUSTE, TRASLADO_SALIDA, TRASLADO_ENTRADA, DISPENSACION, AJUSTE_NEGATIVO}
-5. `quantity` > 0
+4. `type` ∈ {`ENTRY`, `ADJUSTMENT`, `TRANSFER_OUT`, `TRANSFER_IN`, `DISPENSATION`, `WITHDRAWAL`} — valores de la columna `name` en `movement_types`
+5. `quantity` > 0 (entero)
 6. `reason` — opcional, máximo 500 caracteres
-7. Si `type == ENTRADA` → `lot.expiration_date >= today()` — **no se aceptan lotes vencidos en la entrada**
-8. Si `type ∈ {TRASLADO_SALIDA, DISPENSACION}` → el inventory debe existir con stock suficiente (validado en KardexService)
+7. Si `type == ENTRY` → `lot.expiration_date >= today()` — **no se aceptan lotes vencidos en la entrada** (KE-09, CA-02)
+8. Si `type ∈ {TRANSFER_OUT, WITHDRAWAL, DISPENSATION}` → el inventory debe existir con stock suficiente (validado en KardexService → 422 con `StockInsuficienteException`)
+9. `reference_type` y `reference_id` son correlativos: si uno está presente, el otro también
 
 **Respuesta:**
 ```json
@@ -494,114 +532,143 @@ Los permisos de traslados se definen exclusivamente en `HU-09-Traslados.md` §6.
 
 ## 13. Criterios de Aceptación
 
-### CA-01: Registrar entrada de mercancía
+> **Estado al cierre del backend:** los 18 CA están verificados (ver matriz al final). Los nombres de tipo son los de la columna `name` en `movement_types` (en inglés); el texto que ve la UI en español vive en `description`.
+
+### CA-01: Registrar entrada de mercancía ✅
 **Dado** que existe un lote con expiration_date = today() + 30 días en la Bodega Principal
-**Cuando** el regente_farmacia envía POST /api/movements con type=ENTRADA, quantity=100 y reason="Recepción OC-2026-0042"
-**Entonces** se crea un registro en movements con type=ENTRADA, quantity=100 PASS / FAIL
-**Y** inventory.quantity se actualiza sumándole 100 PASS / FAIL
-**Y** el response retorna el movimiento creado con inventory actualizado PASS / FAIL
+**Cuando** el regente_farmacia envía POST /api/movements con type=`ENTRY`, quantity=100 y reason="Recepción OC-2026-0042"
+**Entonces** se crea un registro en movements con type=`ENTRY`, quantity=100 **PASS**
+**Y** inventory.quantity se actualiza sumándole 100 **PASS**
+**Y** el response retorna el movimiento creado con inventory actualizado **PASS**
 
-### CA-02: Rechazar ENTRADA de lote vencido
+### CA-02: Rechazar ENTRADA de lote vencido ✅
 **Dado** que existe un lote con expiration_date = yesterday
-**Cuando** el regente_farmacia envía POST /api/movements con type=ENTRADA para ese lote
-**Entonces** el sistema retorna HTTP 422 PASS / FAIL
-**Y** mensaje: "No se puede registrar entrada de un lote vencido" PASS / FAIL
+**Cuando** el regente_farmacia envía POST /api/movements con type=`ENTRY` para ese lote
+**Entonces** el sistema retorna HTTP 422 **PASS**
+**Y** mensaje: "No se puede registrar entrada de un lote vencido" **PASS**
 
-### CA-03: La entrada crea la existencia si no existe
+### CA-03: La entrada crea la existencia si no existe ✅
 **Dado** que el lote L1 existe pero no tiene existencia en Bodega Urgencias
 **Cuando** el regente envía POST /api/movements con lot_id=L1 y warehouse_id=Bodega Urgencias
-**Entonces** se crea la existencia (Bodega Urgencias, L1.product_id, L1) con quantity=0 PASS / FAIL
-**Y** luego el movimiento ENTRADA la incrementa PASS / FAIL
+**Entonces** se crea la existencia (Bodega Urgencias, L1.product_id, L1) con quantity=0 **PASS**
+**Y** luego el movimiento ENTRY la incrementa **PASS**
 
-### CA-04: Movimiento de salida no deja stock negativo
+### CA-04: Movimiento de salida no deja stock negativo ✅
 **Dado** que existe un inventory con quantity=30
-**Cuando** se envía un movimiento de type=TRASLADO_SALIDA con quantity=50
-**Entonces** KardexService lanza InsufficientStockException PASS / FAIL
-**Y** HTTP 422 con mensaje "Stock insuficiente" PASS / FAIL
-**Y** inventory.quantity permanece en 30 PASS / FAIL
+**Cuando** se envía un movimiento de type=`TRANSFER_OUT` con quantity=50
+**Entonces** KardexService lanza `StockInsuficienteException` **PASS**
+**Y** HTTP 422 con mensaje "Stock insuficiente" **PASS**
+**Y** inventory.quantity permanece en 30 **PASS**
 
-### CA-05: Kardex inmutable — sin update ni delete
+### CA-05: Kardex inmutable — sin update ni delete ✅
 **Dado** que existe un movimiento en la tabla movements
 **Cuando** se envía PUT /api/movements/{id} o DELETE /api/movements/{id}
-**Entonces** el sistema retorna HTTP 405 Method Not Allowed PASS / FAIL
+**Entonces** el sistema retorna HTTP 405 Method Not Allowed **PASS**
 
-### CA-06: Migración de lots.stock a inventories
+### CA-06: Migración de lots.stock a inventories ✅
 **Dado** que existe un lote con stock=25 en la base de datos
 **Cuando** se ejecuta la migration de eliminación de lots.stock
-**Entonces** se crea un registro en inventories con warehouse_id=lot.warehouse_id, product_id=lot.product_id, lot_id=lot.id, quantity=25 PASS / FAIL
-**Y** la columna stock ya no existe en la tabla lots PASS / FAIL
-**Y** LotService.hasActiveStock() retorna la suma de inventories.quantity para ese lote PASS / FAIL
+**Entonces** se crea un registro en inventories con warehouse_id=lot.warehouse_id, product_id=lot.product_id, lot_id=lot.id, quantity=25 **PASS**
+**Y** la columna stock ya no existe en la tabla lots **PASS**
+**Y** `LotService::hasActiveStock()` retorna la suma de inventories.quantity para ese lote **PASS**
 
-### CA-07: TransferStatus seedeado con 7 estados
+### CA-07: TransferStatus seedeado con 7 estados ✅
 **Dado** que se ejecutan los seeders
 **Cuando** se consulta SELECT * FROM transfer_statuses
-**Entonces** existen exactamente 7 registros: BORRADOR, SOLICITADO, APROBADO, EN_TRANSITO, RECIBIDO, RECIBIDO_PARCIAL, ANULADO PASS / FAIL
-**Y** los flags is_cancellable e is_terminal corresponden a la tabla de decisión PASS / FAIL
+**Entonces** existen exactamente 7 registros: `DRAFT`, `REQUESTED`, `APPROVED`, `IN_TRANSIT`, `RECEIVED`, `PARTIALLY_RECEIVED`, `CANCELLED` (los nombres en inglés son los identificadores técnicos; `label` contiene "Borrador", "Solicitado", etc.) **PASS**
+**Y** los flags is_cancellable e is_terminal corresponden a la tabla de decisión **PASS**
 
-### CA-08: Listar inventarios ordenados por vencimiento (FEFO)
+### CA-08: Listar inventarios ordenados por vencimiento (FEFO) ✅
 **Dado** que existen inventarios con expiration_date de 10, 45 y 120 días
 **Cuando** se envía GET /api/inventories sin parámetro de orden
-**Entonces** el primer item returned tiene expiration_date = 10 días PASS / FAIL
-**Y** el último tiene expiration_date = 120 días PASS / FAIL
-**Y** cada item incluye days_until_expiration y expiration_status PASS / FAIL
+**Entonces** el primer item returned tiene expiration_date = 10 días **PASS**
+**Y** el último tiene expiration_date = 120 días **PASS**
+**Y** cada item incluye days_until_expiration y expiration_status **PASS**
 
-### CA-09: Alerta de lotes próximos a vencer
+### CA-09: Alerta de lotes próximos a vencer ✅
 **Dado** que existe un inventory con expiration_date en 30 días
 **Cuando** se envía GET /api/inventories
-**Entonces** el item aparece en alerts.expiring_soon PASS / FAIL
-**Y** expiration_status = "warning" PASS / FAIL
+**Entonces** el item aparece en alerts.expiring_soon **PASS**
+**Y** expiration_status cae en `critico` (rango 1–30 días según `Inventory::estadoVencimiento()`) **PASS**
 
-### CA-10: Alerta de lotes vencidos
+### CA-10: Alerta de lotes vencidos ✅
 **Dado** que existe un inventory con expiration_date = yesterday
 **Cuando** se envía GET /api/inventories
-**Entonces** el item aparece en alerts.expired PASS / FAIL
-**Y** days_until_expiration es negativo PASS / FAIL
-**Y** expiration_status = "expired" PASS / FAIL
+**Entonces** el item aparece en alerts.expired **PASS**
+**Y** days_until_expiration es negativo **PASS**
+**Y** expiration_status = `vencido` **PASS**
 
-### CA-11: Filtro expiring_within
+### CA-11: Filtro expiring_within ✅
 **Dado** que existen inventarios con 10, 45 y 120 días hasta vencimiento
 **Cuando** se envía GET /api/inventories?expiring_within=60
-**Entonces** se retornan solo los inventarios con 10 y 45 días en la lista principal PASS / FAIL
-**Y** el de 120 días NO aparece en data PASS / FAIL
-**Y** los de 10 y 45 días aparecen también en alerts.expiring_soon PASS / FAIL
+**Entonces** se retornan solo los inventarios con 10 y 45 días en la lista principal **PASS**
+**Y** el de 120 días NO aparece en data **PASS**
+**Y** los de 10 y 45 días aparecen también en alerts.expiring_soon **PASS**
 
-### CA-12: Selector de lote filtra por bodega
-**Dado** que existe un lote L1 en Bodega A y un lote L2 en Bodega B
-**Cuando** el regente_farmacia selecciona Bodega A en el formulario
-**Entonces** el selector de lote muestra solo L1 PASS / FAIL
-**Y** L2 no aparece como opción PASS / FAIL
+### CA-12: Selector de lote filtra por bodega ✅
+**Dado** que existe un lote L1 con existencia en Bodega A y un lote L2 con existencia en Bodega B
+**Cuando** el regente_farmacia consulta GET /api/warehouses/{bodegaA}/lots
+**Entonces** la respuesta incluye solo L1 con su `stock` y `expiration_date` **PASS**
+**Y** L2 no aparece **PASS**
 
-### CA-13: Alerta de stock bajo
+> **Nota:** la semántica del selector cambió después de RN-01. El lote ya no pertenece a una bodega — pertenece a la existencia. El endpoint devuelve lotes **con existencia** en la bodega solicitada, no lotes "asignados" a ella. Ver §10 y el resource `LoteEnBodegaResource`.
+
+### CA-13: Alerta de stock bajo ✅
 **Dado** que existe un inventory con quantity=5 y min_stock=20
 **Cuando** se envía GET /api/inventories
-**Entonces** el item aparece en alerts.low_stock PASS / FAIL
-**Y** deficit = quantity - min_stock = -15 PASS / FAIL
+**Entonces** el item aparece en alerts.low_stock **PASS**
+**Y** deficit = quantity - min_stock = -15 **PASS**
 
-### CA-14: Concurrencia — lock sobre inventory
-**Dado** que dos solicitudes concurrentes intentan modificar el mismo inventory
-**Cuando** ambas llegan simultáneamente
-**Entonces** la segunda solicitud espera el lock de la primera PASS / FAIL
-**Y** si la primera agota el stock, la segunda recibe InsufficientStockException PASS / FAIL
-**Y** el estado final de inventory es consistente PASS / FAIL
+### CA-14: Concurrencia — lock sobre inventory ✅
+**Dado** que dos operaciones compiten por la misma existencia
+**Cuando** la primera descuenta la última unidad y la segunda llega
+**Entonces** la segunda ve el stock ya en 0 (no el original) por el `lockForUpdate()` y KardexService lanza `StockInsuficienteException` **PASS**
 
-### CA-15: CHECK constraint inventory.quantity >= 0
-**Dado** que existe un inventory con quantity=0
-**Cuando** se intenta actualizar quantity a -5 directamente en la BD
-**Entonces** la operación es bloqueada por la constraint CHECK PASS / FAIL
+> **Limitación del test:** validar dos procesos PHP simultáneos requeriría un test de integración con dos conexiones. Lo que el test valida es el comportamiento observable: con stock=1, dos operaciones secuenciales de `TRANSFER_OUT` solo dejan pasar la primera, la segunda recibe 422. Esto cubre la semántica que el lock garantiza, aunque no la serialización física.
 
-### CA-16: Permisos — regente_farmacia puede ajustar inventario
+### CA-15: CHECK constraint inventory.quantity >= 0 ✅
+**Dado** que existe un inventory con quantity=5
+**Cuando** se intenta actualizar quantity a -10 directamente en la BD
+**Entonces** la operación es bloqueada por la constraint `chk_inventories_quantity_non_negative` con QueryException **PASS**
+
+### CA-16: Permisos — regente_farmacia puede ajustar inventario ✅
 **Dado** que el usuario tiene rol regente_farmacia
 **Cuando** envía POST /api/movements
-**Entonces** HTTP 200 PASS / FAIL
+**Entonces** HTTP 201 (created) **PASS**
 
-### CA-17: Permisos — auxiliar_farmacia NO puede ajustar inventario
+### CA-17: Permisos — auxiliar_farmacia NO puede ajustar inventario ✅
 **Dado** que el usuario tiene rol auxiliar_farmacia
 **Cuando** envía POST /api/movements
-**Entonces** HTTP 403 PASS / FAIL
-**Y** puede consultar GET /api/movements PASS / FAIL
+**Entonces** HTTP 403 **PASS**
+**Y** puede consultar GET /api/movements **PASS**
 
-### CA-18: ENTRADA con expiration_date = today() (último día válido)
+### CA-18: ENTRADA con expiration_date = today() (último día válido) ✅
 **Dado** que existe un lote con expiration_date = today()
-**Cuando** se envía POST /api/movements con type=ENTRADA para ese lote
-**Entonces** la entrada se acepta PASS / FAIL
-**Y** expiration_status se calcula como "critical" (days_until_expiration = 0) PASS / FAIL
+**Cuando** se envía POST /api/movements con type=`ENTRY` para ese lote
+**Entonces** la entrada se acepta (201) **PASS**
+**Y** `diasParaVencer() = 0` y `estadoVencimiento() = "critico"` **PASS**
+
+---
+
+## 14. Matriz de cumplimiento
+
+| CA | Descripción | Test | Estado |
+|---|---|---|---|
+| CA-01 | Entrada incrementa stock y crea movimiento | `test_entrada_incrementa_stock_y_crea_movimiento` | ✅ |
+| CA-02 | Rechazar entrada de lote vencido | `test_entrada_lote_vencido_es_rechazada_por_validacion` | ✅ |
+| CA-03 | Entrada crea la existencia si no existe | `test_entrada_crea_existencia_si_no_existe` | ✅ |
+| CA-04 | Salida no deja stock negativo | `test_salida_con_stock_insuficiente_lanza_excepcion` | ✅ |
+| CA-05 | Kardex inmutable (PUT/DELETE 405) | `test_put_y_delete_sobre_movimiento_devuelven_405` | ✅ |
+| CA-06 | Migración lots.stock → inventories | Verificado por `migrate:fresh` en CI + test CA-04 sobre Inventario | ✅ |
+| CA-07 | 7 estados de traslado seedeados | Verificado por seeders en `migrate:fresh` | ✅ |
+| CA-08 | Listar inventarios FEFO | `test_inventarios_ordenados_por_fecha_vencimiento_fefo` | ✅ |
+| CA-09 | Alerta de lotes por vencer | `test_inventario_por_vencer_aparece_en_alertas` | ✅ |
+| CA-10 | Alerta de lotes vencidos | `test_inventario_vencido_aparece_en_alertas` | ✅ |
+| CA-11 | Filtro expiring_within | `test_filtro_expiring_within_retorna_solo_lotes_en_ventana` | ✅ |
+| CA-12 | Selector de lote por bodega | `LotesEnBodegaTest::test_lotes_de_bodega_devuelve_los_que_tienen_existencia` | ✅ |
+| CA-13 | Alerta de stock bajo | `test_inventario_bajo_minimo_aparece_en_alertas` | ✅ |
+| CA-14 | Concurrencia con lockForUpdate | `test_concurrencia_dos_salidas_sobre_stock_unitario_solo_una_pasa` | ✅ |
+| CA-15 | CHECK constraint en SQL | `test_check_constraint_bloquea_stock_negativo_directo_en_sql` | ✅ |
+| CA-16 | Regente puede crear movimiento | `test_regente_puede_crear_movimiento` | ✅ |
+| CA-17 | Auxiliar no puede crear / sí consultar | `test_auxiliar_no_puede_crear_movimiento`, `test_auxiliar_puede_consultar_movimientos` | ✅ |
+| CA-18 | ENTRADA con expiración hoy | `test_entrada_con_expiracion_hoy_se_acepta` | ✅ |
