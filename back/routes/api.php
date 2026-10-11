@@ -14,6 +14,7 @@ use App\Http\Controllers\ReadingController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\InventoryController;
 use App\Http\Controllers\MovementController;
+use App\Http\Controllers\TransferController;
 
 /*
 |--------------------------------------------------------------------------
@@ -134,4 +135,33 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('movements/{id}', [MovementController::class, 'update']);
     Route::patch('movements/{id}', [MovementController::class, 'update']);
     Route::delete('movements/{id}', [MovementController::class, 'destroy']);
+
+    // ------------------------------------------------------------------
+    // Traslados (HU-09, RN-07) — maquina de 7 estados
+    //
+    // La matriz de permisos (RolePermissionSeeder) reparte CRUD entre
+    // roles: regente tiene CRUD completo, auxiliar tiene C R U (sin
+    // delete), admin/medico/auditor solo R. El middleware module:transfers
+    // filtra segun la accion HTTP.
+    //
+    // Las acciones de la maquina de estados (approve, dispatch, receive,
+    // cancel) son PATCH por convencion REST: modifican parcialmente un
+    // recurso existente. No son CRUD sobre los items, asi que viven
+    // como rutas explicitas en vez de apiResource.
+    // ------------------------------------------------------------------
+    Route::middleware('module:transfers')->group(function () {
+        Route::get('transfers', [TransferController::class, 'index']);
+        Route::post('transfers', [TransferController::class, 'store']);
+        Route::get('transfers/{id}', [TransferController::class, 'show']);
+        Route::patch('transfers/{id}/approve', [TransferController::class, 'approve']);
+        Route::patch('transfers/{id}/dispatch', [TransferController::class, 'dispatchTransfer']);
+        Route::patch('transfers/{id}/receive', [TransferController::class, 'receive']);
+        Route::patch('transfers/{id}/cancel', [TransferController::class, 'cancel']);
+    });
+
+    // PUT/DELETE explicitos no se registran: un traslado no se
+    // "edita" completo (la HU-09 trabaja con transiciones de estado
+    // parciales) y la cancelacion es via PATCH /cancel, no DELETE.
+    // Devolver 404 por defecto de Laravel es la respuesta correcta:
+    // la operacion no existe, no es un 405.
 });
