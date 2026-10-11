@@ -2,9 +2,10 @@
 
 namespace App\Services;
 
+use App\Models\Bodega;
+use App\Models\Inventory;
 use App\Models\Lot;
 use App\Models\Product;
-use App\Models\Bodega;
 use Exception;
 
 class LotService
@@ -12,15 +13,15 @@ class LotService
 
     /**
      * Obtener los datos necesarios para el formulario de lotes.
+     *
+     * El lote ya no elige bodega: la bodega se elige al registrar la entrada
+     * en el Kardex, que es donde nace la existencia (HU-08). Por eso el
+     * formulario de lotes ya no necesita la lista de bodegas.
      */
     public function getFormData(): array
     {
         return [
             'products' => Product::where('status', true)
-                ->select('id', 'name')
-                ->orderBy('name')
-                ->get(),
-            'bodegas' => Bodega::where('status', true)
                 ->select('id', 'name')
                 ->orderBy('name')
                 ->get(),
@@ -30,13 +31,17 @@ class LotService
 
     /**
      * Obtener todos los lotes paginados.
+     *
+     * Ya no se carga la bodega del lote: el lote no pertenece a una bodega
+     * (HU-08). Se cargan las existencias con su bodega y el Resource calcula
+     * el stock total y las bodegas donde esta el lote.
      */
     public function getAllLots(int $perPage = 15)
     {
         return Lot::latest()
             ->with([
                 'product:id,name',
-                'warehouse:id,name',
+                'inventories.bodega:id,name',
             ])
             ->paginate($perPage);
     }
@@ -123,10 +128,17 @@ class LotService
 
     /**
      * Verificar si el lote tiene stock activo.
+     *
+     * El stock ya no esta en lots (HU-08, RN-01): vive en inventories, una
+     * fila por bodega donde el lote esta. Un lote tiene stock si la suma de
+     * sus existencias da mayor a cero, en cualquier bodega.
+     *
+     * Se consulta con una agregacion en vez de traer las relaciones cargadas
+     * para no arrastrar N filas de inventario solo para sumar.
      */
     private function hasActiveStock(Lot $lot): bool
     {
-        return $lot->stock > 0;
+        return Inventory::where('lot_id', $lot->id)->sum('quantity') > 0;
     }
 
 

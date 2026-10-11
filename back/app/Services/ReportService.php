@@ -2,16 +2,33 @@
 
 namespace App\Services;
 
-use App\Models\Lot;
+use App\Models\Inventory;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
 
 /**
- * Servicio para el reporte de inventario de productos
+ * Reporte de inventario.
+ *
+ * CAMBIO HU-08 (RN-01): el reporte paso de listar lotes a listar existencias.
+ *
+ * Antes la consulta arrancaba en lots y hacia join con bodegas por
+ * lots.warehouse_id, o sea una fila por lote. Ahora arranca en inventories,
+ * que es donde vive el stock, y da una fila por existencia: bodega x producto
+ * x lote.
+ *
+ * El grano no cambio en la practica porque antes un lote solo podia estar en
+ * una bodega, pero ahora el modelo lo permite y el reporte lo refleja. Cuando
+ * un traslado deje el mismo lote en dos bodegas, el reporte mostrara las dos
+ * filas, que es la informacion que se quiere ver.
  */
 class ReportService
 {
-    /** Columnas permitidas para ordenamiento (whitelist anti-SQL injection) */
+    /**
+     * Columnas permitidas para ordenamiento (whitelist anti-SQL injection).
+     *
+     * lots.stock desaparece: la columna no existe. El equivalente es
+     * inventories.quantity, que es el stock de esa existencia concreta.
+     */
     public const SORTABLE_COLUMNS = [
         'products.cum',
         'products.name',
@@ -19,9 +36,9 @@ class ReportService
         'products.invima_registration',
         'groups.name',
         'units.name',
-        'lots.name',        
+        'lots.name',
         'bodegas.name',
-        'lots.stock',
+        'inventories.quantity',
         'lots.expiration_date',
     ];
 
@@ -37,11 +54,12 @@ class ReportService
      */
     public function getInventario(array $filters = []): LengthAwarePaginator
     {
-        $query = Lot::query()
+        $query = Inventory::query()
             ->select([
-                'lots.id',
+                'inventories.id',
+                'lots.id as lot_id',
                 'lots.name as lot_code',
-                'lots.stock',
+                'inventories.quantity',
                 'lots.expiration_date',
                 'lots.status as lot_status',
                 'products.cum',
@@ -53,14 +71,18 @@ class ReportService
                 'units.name as unit_name',
                 'units.abbreviation as unit_abbr',
             ])
-            ->where('lots.status', true)->whereNull('lots.deleted_at')
+            ->join('lots', function ($join) {
+                $join->on('inventories.lot_id', '=', 'lots.id')
+                    ->where('lots.status', true)
+                    ->whereNull('lots.deleted_at');
+            })
             ->join('products', function ($join) {
                 $join->on('lots.product_id', '=', 'products.id')
                     ->where('products.status', true)
                     ->whereNull('products.deleted_at');
             })
             ->join('bodegas', function ($join) {
-                $join->on('lots.warehouse_id', '=', 'bodegas.id')
+                $join->on('inventories.warehouse_id', '=', 'bodegas.id')
                     ->where('bodegas.status', true)
                     ->whereNull('bodegas.deleted_at');
             })
@@ -105,11 +127,14 @@ class ReportService
 
     /**
      * Filtros de select: bodega, grupo, código de lote.
+     *
+     * bodega_id filtra contra inventories.warehouse_id, no contra
+     * lots.warehouse_id: la columna del lote ya no existe.
      */
     private function applySelectFilter($query, array $filters): void
     {
         if (! empty($filters['bodega_id'])) {
-            $query->where('lots.warehouse_id', $filters['bodega_id']);
+            $query->where('inventories.warehouse_id', $filters['bodega_id']);
         }
 
         if (! empty($filters['group_id'])) {
@@ -122,7 +147,11 @@ class ReportService
     }
 
     /**
-     * Filtro de estado de lote    
+     * Filtro de estado de lote.
+     *
+     * El filtro "vencido" sigue exigiendo stock mayor a cero: un lote vencido
+     * sin existencias no aparece en el reporte de inventario porque no hay
+     * inventario que reportar.
      */
     private function applyEstadoFilter($query, array $filters): void
     {
@@ -130,17 +159,17 @@ class ReportService
 
         switch ($estado) {
             case 'con_stock':
-                $query->where('lots.stock', '>', 0);
+                $query->where('inventories.quantity', '>', 0);
                 break;
 
             case 'por_vencer':
-                $query->where('lots.stock', '>', 0)
+                $query->where('inventories.quantity', '>', 0)
                     ->whereDate('lots.expiration_date', '>=', Carbon::today()->toDateString())
                     ->whereDate('lots.expiration_date', '<=', Carbon::today()->addDays(90)->toDateString());
                 break;
 
             case 'vencido':
-                $query->where('lots.stock', '>', 0)
+                $query->where('inventories.quantity', '>', 0)
                     ->whereDate('lots.expiration_date', '<', Carbon::today()->toDateString());
                 break;
 
