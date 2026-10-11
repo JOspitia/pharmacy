@@ -202,7 +202,8 @@ class RolePermissionSeeder extends Seeder
                 // HU-08 §7: auxiliar consulta inventario.
                 'kardex' => self::LECTURA,
                 // HU-09: auxiliar solicita y recibe traslados, pero
-                // no aprueba ni despacha ni anula. Sin can_delete
+                // no aprueba, no despacha y no anula (decisiones
+                // autoritativas del regente). Sin can_delete
                 // porque el historial de traslados no se borra desde
                 // la interfaz.
                 'transfers' => ['can_read', 'can_create', 'can_update'],
@@ -266,7 +267,9 @@ class RolePermissionSeeder extends Seeder
                 'consultar-inventario',
                 'crear-traslado',
                 'recibir-traslado',
-                'anular-traslado',
+                // HU-09: sin anular-traslado. Anular es una decision
+                // autoritativa y le corresponde al regente, igual que
+                // aprobar y despachar. El auxiliar crea y recibe.
                 'consultar-traslados',
             ],
             'regente_farmacia' => [
@@ -277,6 +280,9 @@ class RolePermissionSeeder extends Seeder
                 'aprobar-traslado',
                 'despachar-traslado',
                 'anular-traslado',
+                // HU-09 + RN-07: resolver discrepancias es decision
+                // autoritativa (cerrar el traslado o asumir la perdida).
+                'resolver-discrepancia',
                 'autorizar-control-especial',
                 'ajustar-inventario',
                 'consultar-traslados',

@@ -89,6 +89,7 @@ class PermissionSeeder extends Seeder
         'aprobar-traslado' => 'Aprobar un traslado (exclusivo del regente, RN-08)',
         'despachar-traslado' => 'Despachar un traslado aprobado (exclusivo del regente, HU-09)',
         'anular-traslado' => 'Anular un traslado en estado cancelable (HU-09)',
+        'resolver-discrepancia' => 'Cerrar o dar de baja una discrepancia de recepcion (RN-07)',
         'consultar-traslados' => 'Listar y consultar traslados (todos los roles)',
         'autorizar-control-especial' => 'Autorizar dispensacion de control especial (exclusivo del regente, RN-05)',
         'ajustar-inventario' => 'Ajustar el inventario (exclusivo del regente)',
