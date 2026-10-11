@@ -31,7 +31,7 @@ class ReportRequest extends FormRequest
             'estado'    => 'nullable|in:con_stock,por_vencer,vencido,todos',
             'date_from' => 'nullable|date|before_or_equal:date_to',
             'date_to'   => 'nullable|date|after_or_equal:date_from',
-            'sort_by'   => 'nullable|in:products.cum,products.name,products.barcode,products.invima_registration,groups.name,units.name,lots.name,bodegas.name,lots.stock,lots.expiration_date',
+            'sort_by'   => 'nullable|in:products.cum,products.name,products.barcode,products.invima_registration,groups.name,units.name,lots.name,bodegas.name,inventories.quantity,lots.expiration_date',
             'sort_dir'  => 'nullable|in:asc,desc',
             'per_page'  => 'nullable|integer|min:1|max:100',
             'page'      => 'nullable|integer|min:1',

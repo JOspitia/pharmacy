@@ -12,6 +12,8 @@ use App\Http\Controllers\LotController;
 use App\Http\Controllers\SensorController;
 use App\Http\Controllers\ReadingController;
 use App\Http\Controllers\ReportController;
+use App\Http\Controllers\InventoryController;
+use App\Http\Controllers\MovementController;
 
 /*
 |--------------------------------------------------------------------------
@@ -76,6 +78,9 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::middleware('module:warehouses')->group(function () {
         Route::patch('bodegas/{bodega}/toggle-status', [BodegaController::class, 'toggleStatus']);
+        // HU-08, CA-12: selector de lote por bodega para el formulario de
+        // Kardex. Va en el grupo de warehouses porque la URL es /bodegas/{id}/lots.
+        Route::get('bodegas/{bodega}/lots', [BodegaController::class, 'lots']);
         Route::apiResource('bodegas', BodegaController::class);
     });
 
@@ -104,4 +109,29 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::middleware('module:reports')->group(function () {
         Route::get('reportes/inventario', [ReportController::class, 'index']);
     });
+
+    // ------------------------------------------------------------------
+    // Kardex (HU-08) — modulo de existencias y movimientos
+    //
+    // Solo lectura: todos los roles autenticados pueden consultar (HU-08 §7).
+    // Ajuste (crear movimiento): solo regente_farmacia y admin (HU-08 §7).
+    // ------------------------------------------------------------------
+    Route::middleware('module:kardex')->group(function () {
+        Route::get('inventories', [InventoryController::class, 'index']);
+        Route::get('movements', [MovementController::class, 'index']);
+
+        // Ajuste de inventario: solo regente y admin tienen can_create.
+        // El middleware module:kardex ya filtra por can_create para POST.
+        Route::post('movements', [MovementController::class, 'store']);
+    });
+
+    // Kardex inmutable (RN-06, CA-05): PUT/PATCH/DELETE devuelven 405
+    // explicito. Se registran AFUERA del middleware module:kardex a
+    // proposito: si quedaran adentro, el middleware rechazaria con 403 al
+    // verificar can_update/can_delete (que nadie tiene) ANTES de llegar al
+    // controller, y el cliente nunca veria el 405 que documenta la
+    // inmutabilidad.
+    Route::put('movements/{id}', [MovementController::class, 'update']);
+    Route::patch('movements/{id}', [MovementController::class, 'update']);
+    Route::delete('movements/{id}', [MovementController::class, 'destroy']);
 });

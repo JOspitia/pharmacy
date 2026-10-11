@@ -63,10 +63,14 @@ class LotController extends Controller
 
     /**
      * Mostrar un lote específico.
+     *
+     * HU-08 (RN-01): el lote ya no tiene bodega propia. Se cargan las
+     * existencias con su bodega para que LotResource pueda calcular el stock
+     * total y la lista de bodegas donde está.
      */
     public function show(Lot $lot)
     {
-        $lot->load(['product', 'warehouse']);
+        $lot->load(['product', 'inventories.bodega']);
         return new LotResource($lot);
     }
 
@@ -76,14 +80,16 @@ class LotController extends Controller
     public function update(StoreLotRequest $request, Lot $lot)
     {
         try {
-            $updated = $this->lotService->updateLot($lot, $request->validated());
+            $this->lotService->updateLot($lot, $request->validated());
+            $lot->load(['product', 'inventories.bodega']);
+
             return response()->json([
                 'message' => 'Lote actualizado con éxito',
-                'data'    => new LotResource($updated)
+                'data' => new LotResource($lot),
             ], 200);
         } catch (Exception $e) {
             return response()->json([
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ], $e->getCode() ?: 400);
         }
     }
@@ -95,12 +101,13 @@ class LotController extends Controller
     {
         try {
             $this->lotService->deleteLot($lot);
+
             return response()->json([
-                'message' => 'Lote eliminado con éxito'
+                'message' => 'Lote eliminado con éxito',
             ], 200);
         } catch (Exception $e) {
             return response()->json([
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ], $e->getCode() ?: 400);
         }
     }
@@ -111,12 +118,13 @@ class LotController extends Controller
     public function toggleStatus(Lot $lot)
     {
         try {
-            $updatedLot = $this->lotService->toggleStatus($lot);
-            $accion = $updatedLot->status ? 'activado' : 'inactivado';
+            $this->lotService->toggleStatus($lot);
+            $lot->load(['product', 'inventories.bodega']);
+            $accion = $lot->status ? 'activado' : 'inactivado';
 
             return response()->json([
                 'message' => "Lote {$accion} con éxito",
-                'data' => new LotResource($updatedLot)
+                'data' => new LotResource($lot),
             ], 200);
         } catch (Exception $e) {
             return response()->json(['message' => $e->getMessage()], 409);

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\StoreBodegaRequest;
 use App\Http\Resources\BodegaResource;
+use App\Http\Resources\LoteEnBodegaResource;
 use App\Models\Bodega;
 use App\Services\BodegaService;
 use Exception;
@@ -104,5 +105,24 @@ class BodegaController extends Controller
         } catch (Exception $e) {
             return response()->json(['message' => $e->getMessage()], 409);
         }
+    }
+
+    /**
+     * GET /api/bodegas/{bodega}/lots
+     *
+     * Lotes con existencia en esta bodega (HU-08, CA-12).
+     *
+     * Alimenta el selector de lote del formulario de Kardex: cuando el
+     * regente elige una bodega, este endpoint devuelve los lotes que tienen
+     * al menos una unidad en esa bodega, ordenados FEFO.
+     *
+     * Solo lectura, sin parametros: la bodega viene por la URL, los lotes
+     * no se filtran por query.
+     */
+    public function lots(Bodega $bodega)
+    {
+        $lotes = $this->bodegaService->lotesEnBodega($bodega);
+
+        return LoteEnBodegaResource::collection($lotes);
     }
 }

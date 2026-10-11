@@ -21,7 +21,10 @@ class ReportResource extends JsonResource
             'group_name'          => $this->group_name,
             'barcode'             => $this->barcode,
             'invima'              => $this->invima_registration,
-            'stock'               => (int) $this->stock,
+            // HU-08: el stock viene de inventories.quantity (la existencia), no de
+            // lots.stock que ya no existe. El nombre de la clave se mantiene
+            // para no romper el contrato que consume el frontend.
+            'stock'               => (int) $this->quantity,
             'unit'                => $this->unit_name . ($this->unit_abbr ? " ({$this->unit_abbr})" : ''),
             'lot_code'            => $this->lot_code,
             'bodega_name'         => $this->bodega_name,
