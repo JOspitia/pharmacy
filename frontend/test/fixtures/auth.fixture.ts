@@ -28,7 +28,7 @@ export const REGENTE = {
 }
 
 export const test = base.extend<{ loggedInPage: Page }>({
-  loggedInPage: async ({ page }, use) => {
+  loggedInPage: async ({ page }, testPage) => {
     await loginViaApi(page, REGENTE.name, REGENTE.password)
     // goto('/Home') al final para resetear el estado del page: el
     // test anterior puede haber dejado un modal abierto, errores en
@@ -36,7 +36,7 @@ export const test = base.extend<{ loggedInPage: Page }>({
     // garantiza que cada test corre contra un estado conocido.
     await page.goto('/Home')
     await page.waitForLoadState('domcontentloaded')
-    await use(page)
+    await testPage(page)
   },
 })
 

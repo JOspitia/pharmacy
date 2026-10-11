@@ -65,17 +65,16 @@ export function MovementFormModal({
   // Bodega seleccionada -> determina que lotes se cargan
   const [warehouseId, setWarehouseId] = useState<string | undefined>(defaultWarehouseId)
 
-  // Reset al abrir/cerrar
+  // Limpiar error residual al abrir. El resetFields() no hace falta
+  // porque el Modal usa destroyOnClose (destruye y recrea en cada open).
+  // El setWarehouseId tampoco: el estado ya se inicializa con
+  // defaultWarehouseId en el useState.
   useEffect(() => {
     if (open) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setError(null)
-      setWarehouseId(defaultWarehouseId)
-      form.resetFields()
-      if (defaultWarehouseId) {
-        form.setFieldValue('warehouse_id', defaultWarehouseId)
-      }
     }
-  }, [open, defaultWarehouseId, form])
+  }, [open])
 
   // Bodegas (catalogo: usamos el endpoint paginado, tomamos 100)
   const { data: warehousesData } = useApi<{ data: Warehouse[] }>(

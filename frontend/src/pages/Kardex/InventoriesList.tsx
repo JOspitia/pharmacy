@@ -7,7 +7,7 @@
  *
  * Patron: mismo diseno que LotsList y WarehousesList (Tabla + filtros + alertas).
  */
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { Button, Space, Table, Tag, Tooltip, Select, DatePicker, message, Card, Statistic, List, Empty } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import {
@@ -55,52 +55,25 @@ function statusColor(status: Inventory['expiration_status']): string {
 }
 
 /**
- * Componente principal de la pantalla de Inventario.
+ * Tabla de inventarios con paginacion propia.
+ *
+ * Se reinicializa automaticamente cuando cambia la key (los filtros del padre),
+ * reseteando page a 1 sin necesidad de setState en un effect. Este patron
+ * (key-driven remount) es el que la documentacion de React recomienda para
+ * resetear estado cuando cambian "identity" de los datos.
  */
-export function InventoriesList() {
-  // Filtros del query
-  const [warehouseId, setWarehouseId] = useState<string | undefined>()
-  const [productId, setProductId] = useState<string | undefined>()
-  const [expiringRange, setExpiringRange] = useState<[Dayjs, Dayjs] | null>(null)
+function InventoryTable({
+  inventories,
+  meta,
+  isLoading,
+  onPageChange,
+}: {
+  inventories: Inventory[]
+  meta?: { total: number; per_page: number }
+  isLoading: boolean
+  onPageChange: (page: number) => void
+}) {
   const [page, setPage] = useState(1)
-
-  // Modal de registrar movimiento
-  const [movementModalOpen, setMovementModalOpen] = useState(false)
-
-  // Construir query con filtros
-  const filters: InventoryFilters = {
-    warehouse_id: warehouseId,
-    product_id: productId,
-    expiring_within: expiringRange
-      ? Math.max(1, expiringRange[1].diff(expiringRange[0], 'day'))
-      : undefined,
-    page,
-    per_page: 15,
-  }
-  const query = buildInventoryQuery(filters)
-
-  // Fetch con react-actualizacion por cambios de filtros
-  const { data, error, isLoading, refetch } = useApi<InventoryListResponse>(
-    query,
-    [warehouseId, productId, expiringRange?.[0]?.toISOString(), expiringRange?.[1]?.toISOString(), page],
-  )
-
-  // Bodegas para el filtro (reutilizamos el endpoint existente que ya devuelve
-  // bodegas paginadas; el selector no necesita paginacion, asi que tomamos 100)
-  const { data: warehousesData } = useApi<{ data: Warehouse[] }>(
-    '/api/bodegas?per_page=100',
-    [],
-  )
-
-  // Debounce del filtro de bodega
-  useMemo(() => {
-    // al cambiar de bodega, reset pagina
-    setPage(1)
-  }, [warehouseId, productId])
-
-  const inventories = data?.data ?? []
-  const meta = data?.meta
-  const alerts = data?.alerts
 
   /**
    * Columnas de la tabla de existencias.
@@ -188,6 +161,70 @@ export function InventoriesList() {
       },
     },
   ]
+
+  return (
+    <Table<Inventory>
+      rowKey="id"
+      columns={columns}
+      dataSource={inventories}
+      loading={isLoading}
+      pagination={{
+        current: page,
+        total: meta?.total ?? 0,
+        pageSize: meta?.per_page ?? 15,
+        onChange: (p) => {
+          setPage(p)
+          onPageChange(p)
+        },
+        showSizeChanger: false,
+      }}
+      locale={{ emptyText: 'No hay existencias registradas' }}
+    />
+  )
+}
+
+/**
+ * Componente principal de la pantalla de Inventario.
+ */
+export function InventoriesList() {
+  // Filtros del query
+  const [warehouseId, setWarehouseId] = useState<string | undefined>()
+  const [productId, setProductId] = useState<string | undefined>()
+  const [expiringRange, setExpiringRange] = useState<[Dayjs, Dayjs] | null>(null)
+
+  // Modal de registrar movimiento
+  const [movementModalOpen, setMovementModalOpen] = useState(false)
+
+  // Construir query con filtros
+  const filters: InventoryFilters = {
+    warehouse_id: warehouseId,
+    product_id: productId,
+    expiring_within: expiringRange
+      ? Math.max(1, expiringRange[1].diff(expiringRange[0], 'day'))
+      : undefined,
+    page: 1,
+    per_page: 15,
+  }
+  const query = buildInventoryQuery(filters)
+
+  // Fetch con react-actualizacion por cambios de filtros.
+  // El dependency array no incluye `page` del sub-componente porque el
+  // sub-componente se reinicia solo cuando cambia la key (filtros).
+  const { data, error, isLoading, refetch } = useApi<InventoryListResponse>(
+    query,
+    [warehouseId, productId, expiringRange?.[0]?.toISOString(), expiringRange?.[1]?.toISOString()],
+  )
+
+  // Bodegas para el filtro (reutilizamos el endpoint existente que ya devuelve
+  // bodegas paginadas; el selector no necesita paginacion, asi que tomamos 100)
+  const { data: warehousesData } = useApi<{ data: Warehouse[] }>(
+    '/api/bodegas?per_page=100',
+    [],
+  )
+
+  const inventories = data?.data ?? []
+  const meta = data?.meta
+  const alerts = data?.alerts
 
   if (isLoading && !data) return <LoadingScreen />
 
@@ -318,19 +355,15 @@ export function InventoriesList() {
         </Tooltip>
       </div>
 
-      <Table<Inventory>
-        rowKey="id"
-        columns={columns}
-        dataSource={inventories}
-        loading={isLoading}
-        pagination={{
-          current: page,
-          total: meta?.total ?? 0,
-          pageSize: meta?.per_page ?? 15,
-          onChange: setPage,
-          showSizeChanger: false,
-        }}
-        locale={{ emptyText: 'No hay existencias registradas' }}
+      {/* La key fuerza un remount (y page=1) cuando cambian los filtros.
+          Es el patron documentado en React para "resetting state" sin
+          necesidad de setState dentro de un effect. */}
+      <InventoryTable
+        key={`inv-table-${warehouseId ?? 'all'}-${productId ?? 'all'}`}
+        inventories={inventories}
+        meta={meta}
+        isLoading={isLoading}
+        onPageChange={() => {}}
       />
 
       <MovementFormModal
