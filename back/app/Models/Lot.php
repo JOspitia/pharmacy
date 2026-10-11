@@ -24,11 +24,15 @@ class Lot extends Model
     public $incrementing = false;
 
     // Campos que se pueden asignar masivamente
+    //
+    // stock y warehouse_id ya no viven aca (HU-08, RN-01). El stock pertenece
+    // a la existencia, que es la terna bodega x producto x lote; el lote es un
+    // atributo del producto (numero de lote del fabricante y fecha de
+    // vencimiento) y no un lugar. Mantenerlos en el fillable haria que un
+    // INSERT intentara escribir columnas que ya no existen.
     protected $fillable = [
         'name',
         'product_id',
-        'warehouse_id',
-        'stock',
         'expiration_date',
         'description',
         'created_by',
@@ -41,9 +45,23 @@ class Lot extends Model
         return $this->belongsTo(Product::class);
     }
 
-    public function warehouse()
+    /**
+     * Existencias de este lote, una por bodega (RN-01).
+     *
+     * Reemplaza a la relacion directa con bodega: el mismo lote puede estar
+     * en varias bodegas a la vez, que es lo que un traslado hace posible.
+     */
+    public function inventories()
     {
-        return $this->belongsTo(Bodega::class, 'warehouse_id');
+        return $this->hasMany(Inventory::class);
+    }
+
+    /**
+     * Stock total del lote sumando todas las bodegas donde esta.
+     */
+    public function stockTotal(): int
+    {
+        return (int) $this->inventories()->sum('quantity');
     }
 
     public function createdBy()
@@ -61,11 +79,7 @@ class Lot extends Model
     protected $casts = [
         'expiration_date' => 'date',
         'status' => 'boolean',
-        // Sin este cast SQL Server devuelve los enteros como string ("10")
-        // y el frontend recibe un tipo inesperado en la respuesta.
-        'stock' => 'integer',
         'product_id' => 'string',
-        'warehouse_id' => 'string',
     ];
 
     // Valores por defecto del modelo antes de guardar en base de datos
