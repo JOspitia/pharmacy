@@ -16,17 +16,26 @@
  * @property {string} updated_at - Fecha de actualización del lote
  * @property {string | null} deleted_at - Fecha de eliminación del lote
  */
+export interface WarehouseSummary {
+  id: string
+  name: string
+  /** Cantidad del lote en esta bodega. */
+  quantity: number
+}
+
 export interface Lot {
   id: string
   name: string
+  /** Suma de quantity en todas las bodegas. Viene calculado del backend. */
   stock: number
   expiration_date: string
   description: string | null
   status: boolean
   product_id: string
-  warehouse_id: string
+  /** HU-08: el lote ya no tiene bodega propia. Se reemplazo por el array
+   *  `warehouses` que lista las bodegas donde tiene existencia. */
+  warehouses?: WarehouseSummary[]
   product?: { id: string; name: string }
-  warehouse?: { id: string; name: string }
   derived_status: string
   created_at: string
   updated_at: string
@@ -47,8 +56,6 @@ export interface Lot {
 export interface LotPayload {
   name: string
   product_id: string
-  warehouse_id: string
-  stock: number
   expiration_date: string
   description?: string | null
   status?: boolean

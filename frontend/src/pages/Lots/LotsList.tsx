@@ -93,11 +93,29 @@ export function LotsList() {
       render: (_, record) => record.product?.name ?? '—',
     },
     {
-      title: 'Bodega',
-      dataIndex: ['warehouse', 'name'],
-      key: 'warehouse_name',
-      width: 180,
-      render: (_, record) => record.warehouse?.name ?? '—',
+      // HU-08 (RN-01): el lote ya no pertenece a una bodega, sino que
+      // tiene existencia en N bodegas. Mostramos la lista como badges
+      // con la cantidad en cada una para que el regente vea de un
+      // vistazo donde hay stock disponible de este lote.
+      title: 'Ubicacion',
+      key: 'warehouses',
+      width: 280,
+      render: (_, record: Lot) => {
+        const bodegas = record.warehouses ?? []
+        if (bodegas.length === 0) {
+          return <span style={{ color: '#94a3b8' }}>Sin stock</span>
+        }
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {bodegas.map((b) => (
+              <span key={b.id} style={{ fontSize: 12 }}>
+                <strong style={{ color: '#0e7490' }}>{b.name}</strong>
+                <span style={{ color: '#94a3b8' }}> ({b.quantity})</span>
+              </span>
+            ))}
+          </div>
+        )
+      },
     },
     {
       title: 'Stock',

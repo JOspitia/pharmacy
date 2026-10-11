@@ -95,9 +95,11 @@ class BodegaService
      * la suma es, en la practica, una sola fila, pero se hace con SUM
      * para no acoplar el service a esa invariante.
      *
-     * Se filtra `quantity > 0` para que el selector no muestre existencias
-     * vacias: el regente que registra una ENTRADA quiere saber contra que
-     * lote esta sumando, no ver opciones donde el stock es 0.
+     * Incluye lotes con stock 0: el regente que registra una ENTRY sobre
+     * un lote vacio (re-abastecer despues de una salida total) necesita
+     * poder elegirlo. La UI muestra un Tag "Sin stock" para distinguir
+     * y el backend rechaza TRANSFER_OUT o DISPENSATION sobre stock 0 con
+     * StockInsuficienteException.
      *
      * El orden es FEFO (expiration_date ASC): primero el que vence antes,
      * que es la convencion del resto del proyecto (HU-08 §10).
@@ -109,6 +111,9 @@ class BodegaService
         // Join a inventories para ordenar por expiration_date (FEFO).
         // El join se hace sobre la misma bodega para que el orden respete
         // el stock en ESA bodega, no el stock global del lote.
+        //
+        // No se filtra por quantity: el selector del Kardex debe mostrar
+        // lotes con stock 0 para permitir re-abastecerlos.
         //
         // No se necesita GROUP BY: la UNIQUE constraint de RN-01 garantiza
         // que para una bodega dada, cada lote tiene a lo sumo una fila en
@@ -123,7 +128,6 @@ class BodegaService
             ->select('lots.*')
             ->join('inventories', 'inventories.lot_id', '=', 'lots.id')
             ->where('inventories.warehouse_id', $bodega->id)
-            ->where('inventories.quantity', '>', 0)
             ->with([
                 'product:id,name,cum',
                 'inventories' => function ($query) use ($bodega) {

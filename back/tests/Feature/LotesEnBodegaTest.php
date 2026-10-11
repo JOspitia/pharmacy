@@ -69,19 +69,48 @@ class LotesEnBodegaTest extends TestCase
         $this->assertSame(50, $data[0]['stock']);
     }
 
-    public function test_lotes_con_stock_cero_se_excluyen(): void
+    public function test_lotes_con_stock_cero_se_incluyen_para_reabastecer(): void
     {
+        // El selector del Kardex debe mostrar lotes con stock 0 para que
+        // el regente pueda registrar una ENTRY sobre un lote vacio.
+        // La UI los distingue con un Tag "Sin stock" y el backend rechaza
+        // TRANSFER_OUT/DISPENSATION sobre stock 0 con StockInsuficienteException.
         $bodega = Bodega::factory()->create();
         $lote = Lot::factory()->create();
         Inventory::factory()->create([
             'warehouse_id' => $bodega->id,
             'lot_id' => $lote->id,
             'product_id' => $lote->product_id,
-            'quantity' => 0,  // sin stock
+            'quantity' => 0,
         ]);
 
         $response = $this->actingAs($this->regente(), 'sanctum')
             ->getJson("/api/bodegas/{$bodega->id}/lots");
+
+        $response->assertStatus(200);
+        $data = $response->json('data');
+        $this->assertCount(1, $data);
+        $this->assertSame(strtolower($lote->id), strtolower($data[0]['id']));
+        $this->assertSame(0, $data[0]['stock']);
+    }
+
+    public function test_lotes_sin_existencia_en_bodega_se_excluyen(): void
+    {
+        // Un lote con stock en bodega B NO debe aparecer cuando consulto A,
+        // aunque su stock sea 0 o positivo.
+        $bodegaA = Bodega::factory()->create();
+        $bodegaB = Bodega::factory()->create();
+
+        $lote = Lot::factory()->create();
+        Inventory::factory()->create([
+            'warehouse_id' => $bodegaB->id,
+            'lot_id' => $lote->id,
+            'product_id' => $lote->product_id,
+            'quantity' => 0,
+        ]);
+
+        $response = $this->actingAs($this->regente(), 'sanctum')
+            ->getJson("/api/bodegas/{$bodegaA->id}/lots");
 
         $response->assertStatus(200);
         $this->assertCount(0, $response->json('data'));
