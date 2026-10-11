@@ -297,7 +297,7 @@ public function test_admin_consulta_todos_los_modulos_y_escribe_solo_where_corre
         $this->assertFalse($this->tiene('medico', 'warehouses.can_create'));
     }
 
-    public function test_auditor_es_solo_lectura_en_los_siete_modulos(): void
+    public function test_auditor_es_solo_lectura_en_los_ocho_modulos(): void
     {
         $modulos = DB::table('role_permissions')
             ->join('roles', 'roles.id', '=', 'role_permissions.role_id')
@@ -307,11 +307,11 @@ public function test_admin_consulta_todos_los_modulos_y_escribe_solo_where_corre
             ->distinct()
             ->count('permissions.module_id');
 
-        // Siete modulos con permisos de lectura para auditor: los seis originales
-        // mas kardex (HU-08).
-        $this->assertSame(7, $modulos);
+        // Ocho modulos con permisos de lectura para auditor: los seis originales
+        // mas kardex (HU-08) y transfers (HU-09).
+        $this->assertSame(8, $modulos);
 
-        foreach (['warehouses', 'groups', 'products', 'lots', 'sensors', 'reports', 'kardex'] as $modulo) {
+        foreach (['warehouses', 'groups', 'products', 'lots', 'sensors', 'reports', 'kardex', 'transfers'] as $modulo) {
             $this->assertTrue($this->tiene('auditor', "{$modulo}.can_read"), "auditor deberia leer {$modulo}");
             $this->assertFalse($this->tiene('auditor', "{$modulo}.can_create"));
             $this->assertFalse($this->tiene('auditor', "{$modulo}.can_update"));
