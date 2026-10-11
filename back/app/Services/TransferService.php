@@ -13,6 +13,7 @@ use App\Models\TransferStatus;
 use App\Models\User;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 
 /**
  * Logica de negocio de traslados (HU-09, RN-07).
@@ -129,7 +130,7 @@ class TransferService
                 }
                 if ($item['requested_quantity'] > $inv->quantity) {
                     throw new StockInsuficienteException(sprintf(
-                        'Stock insuficiente: el item %d pide %d unidades y solo hay %d disponibles en la bodega de origen.',
+                        'Stock insuficiente: el ítem %d pide %d unidades y solo hay %d disponibles en la bodega de origen.',
                         $pos + 1,
                         $item['requested_quantity'],
                         $inv->quantity
@@ -169,7 +170,18 @@ class TransferService
      */
     public function listar(array $filtros): \Illuminate\Contracts\Pagination\LengthAwarePaginator
     {
-        $query = Transfer::query()->with(['items', 'status', 'bodegaOrigen', 'bodegaDestino', 'requestedBy']);
+        // `discrepancies` se carga SOLO cuando sigue PENDING. El listado
+        // existe para que el usuario vea que hay algo esperando decision;
+        // traer tambien las ya resueltas infla el payload sin aportar nada
+        // ahi. El detalle (show) si las trae todas.
+        $query = Transfer::query()->with([
+            'items',
+            'status',
+            'bodegaOrigen',
+            'bodegaDestino',
+            'requestedBy',
+            'discrepancies' => fn ($q) => $q->where('status', TransferDiscrepancy::STATUS_PENDING),
+        ]);
 
         if (! empty($filtros['status_id'])) {
             $query->where('status_id', $filtros['status_id']);
@@ -208,6 +220,13 @@ class TransferService
         if ($usuario === null) {
             throw new KardexStateException('Se necesita un usuario autenticado para aprobar un traslado.');
         }
+
+        // El middleware EnsureModule solo conoce el verbo HTTP: un PATCH
+        // exige transfers.can_update, que el auxiliar tiene. La capacidad
+        // `aprobar-traslado` es mas fina y hay que preguntarla aca.
+        // Gate::authorize() lanza AuthorizationException, que Laravel
+        // traduce a 403 (a diferencia de KardexStateException, que es 422).
+        Gate::forUser($usuario)->authorize('aprobar-traslado');
 
         return DB::transaction(function () use ($transfer, $itemsAprobados, $usuario) {
             $transfer = Transfer::whereKey($transfer->id)->lockForUpdate()->first();
@@ -276,6 +295,10 @@ class TransferService
         if ($usuario === null) {
             throw new KardexStateException('Se necesita un usuario autenticado para despachar un traslado.');
         }
+
+        // Ver la nota en aprobar(): el verbo PATCH no distingue despachar
+        // de cualquier otra edicion, la capacidad si.
+        Gate::forUser($usuario)->authorize('despachar-traslado');
 
         $tipo = MovementType::porNombre('TRANSFER_OUT');
         if ($tipo === null) {
@@ -349,7 +372,13 @@ class TransferService
 
         return DB::transaction(function () use ($transfer, $itemsRecibidos, $usuario, $tipo) {
             $transfer = Transfer::whereKey($transfer->id)->lockForUpdate()->first();
-            $this->asegurarEstadoEn($transfer, ['IN_TRANSIT']);
+
+            // Permite IN_TRANSIT (recepcion inicial) y PARTIALLY_RECEIVED
+            // (recepcion tardia de un faltante). En el segundo caso, los
+            // items que ya tienen delivered_quantity > 0 no se pueden
+            // re-ingresar: el delta entre el nuevo delivered y el anterior
+            // es lo que realmente se mueve al destino.
+            $this->asegurarEstadoEn($transfer, ['IN_TRANSIT', 'PARTIALLY_RECEIVED']);
 
             $items = $transfer->items()->lockForUpdate()->get();
             $recibidos = collect($itemsRecibidos)->keyBy('transfer_item_id');
@@ -362,22 +391,38 @@ class TransferService
                     throw new KardexStateException("Falta la cantidad recibida para el item {$item->id}.");
                 }
 
-                $delivered = $recibido['delivered_quantity'];
                 $approved = $item->approved_quantity ?? $item->requested_quantity;
+                $deliveredAnterior = $item->delivered_quantity ?? 0;
+                $deliveredNuevo = $recibido['delivered_quantity'];
 
-                if ($delivered > $approved) {
+                if ($deliveredNuevo > $approved) {
                     throw new KardexStateException(sprintf(
                         'La cantidad recibida (%d) no puede superar la aprobada (%d) en el item %s.',
-                        $delivered,
+                        $deliveredNuevo,
                         $approved,
                         $item->id
                     ));
                 }
 
-                $item->delivered_quantity = $delivered;
+                // No se puede "des-recibir": si la recepcion anterior ya
+                // registro unidades, el nuevo valor no puede ser menor.
+                if ($deliveredNuevo < $deliveredAnterior) {
+                    throw new KardexStateException(sprintf(
+                        'La cantidad recibida para el item %s no puede ser menor que la ya registrada (%d).',
+                        $item->id,
+                        $deliveredAnterior
+                    ));
+                }
+
+                // El delta es lo que realmente entra al destino: en la
+                // primera recepcion delta = deliveredNuevo; en re-recepciones
+                // delta = deliveredNuevo - deliveredAnterior.
+                $delta = $deliveredNuevo - $deliveredAnterior;
+
+                $item->delivered_quantity = $deliveredNuevo;
                 $item->save();
 
-                if ($delivered > 0) {
+                if ($delta > 0) {
                     $lote = $item->inventory?->lot;
                     if ($lote === null) {
                         throw new KardexStateException("El item {$item->id} no tiene un lote asociado.");
@@ -392,27 +437,64 @@ class TransferService
                     $this->kardex->registrarMovimiento(
                         $existenciaDestino,
                         $tipo,
-                        $delivered,
+                        $delta,
                         $usuario,
                         'Transfer',
                         $transfer->id,
-                        "Recepcion de traslado {$transfer->transfer_number}"
+                        $deliveredAnterior > 0
+                            ? "Recepcion tardia de traslado {$transfer->transfer_number}"
+                            : "Recepcion de traslado {$transfer->transfer_number}"
                     );
                 }
 
-                // RN-07: si delivered < approved, se persiste una discrepancia.
-                if ($delivered < $approved) {
+                // RN-07: si el total delivered sigue siendo menor que approved,
+                // la discrepancia queda PENDING (o se actualiza si ya existia).
+                $existente = TransferDiscrepancy::where('transfer_item_id', $item->id)
+                    ->where('status', TransferDiscrepancy::STATUS_PENDING)
+                    ->first();
+
+                if ($deliveredNuevo < $approved) {
                     $alMenosUnaDiscrepancia = true;
-                    TransferDiscrepancy::create([
-                        'transfer_id' => $transfer->id,
-                        'transfer_item_id' => $item->id,
-                        'approved_quantity' => $approved,
-                        'delivered_quantity' => $delivered,
-                        'difference' => $approved - $delivered,
-                        'status' => TransferDiscrepancy::STATUS_PENDING,
-                    ]);
+                    if ($existente !== null) {
+                        // Recepcion tardia parcial: ajustar el delivered
+                        // y la diferencia en la discrepancia existente.
+                        $existente->delivered_quantity = $deliveredNuevo;
+                        $existente->difference = $approved - $deliveredNuevo;
+                        $existente->save();
+                    } else {
+                        TransferDiscrepancy::create([
+                            'transfer_id' => $transfer->id,
+                            'transfer_item_id' => $item->id,
+                            'approved_quantity' => $approved,
+                            'delivered_quantity' => $deliveredNuevo,
+                            'difference' => $approved - $deliveredNuevo,
+                            'status' => TransferDiscrepancy::STATUS_PENDING,
+                        ]);
+                    }
+                } elseif ($existente !== null) {
+                    // La recepcion tardia completo lo que faltaba: la
+                    // discrepancia ya no representa un faltante, asi que se
+                    // cierra sola. Dejarla PENDING con difference = 0 seria
+                    // un estado imposible de explicar ("faltante de 0") que
+                    // ademas mantendria el traslado en PARTIALLY_RECEIVED sin
+                    // que nadie pueda cerrarlo de verdad.
+                    $existente->delivered_quantity = $deliveredNuevo;
+                    $existente->difference = 0;
+                    $existente->status = TransferDiscrepancy::STATUS_RESOLVED;
+                    $existente->resolution_notes = 'Completada por recepcion tardia.';
+                    $existente->resolved_by = $usuario->id;
+                    $existente->resolved_at = now();
+                    $existente->save();
                 }
             }
+
+            // Si alguna discrepancia quedo PENDING (y solo si quedo), el
+            // traslado se mantiene en PARTIALLY_RECEIVED. Si ya estamos
+            // re-recibiendo y todo se completo, pasar a RECEIVED.
+            $pendientes = TransferDiscrepancy::where('transfer_id', $transfer->id)
+                ->where('status', TransferDiscrepancy::STATUS_PENDING)
+                ->exists();
+            $alMenosUnaDiscrepancia = $alMenosUnaDiscrepancia || $pendientes;
 
             $transfer->status_id = TransferStatus::porNombre(
                 $alMenosUnaDiscrepancia ? 'PARTIALLY_RECEIVED' : 'RECEIVED'
@@ -422,6 +504,80 @@ class TransferService
             $transfer->save();
 
             return $transfer->fresh(['items', 'discrepancies', 'status']);
+        });
+    }
+
+    /**
+     * Resuelve una discrepancia puntual sin tocar el stock.
+     *
+     * Acciones posibles:
+     *   - 'resolve':     el faltante llego en otro momento, no se re-recibe
+     *                    por este endpoint, solo se cierra el registro.
+     *                    No mueve Kardex. La trazabilidad del faltante
+     *                    queda en el campo resolution_notes.
+     *   - 'write_off':   la diferencia se asume como perdida. No se
+     *                    repone stock (RN-06: la correccion de inventario
+     *                    se hace por ajuste, no por este endpoint).
+     *                    Queda registrado en resolution_notes quien y
+     *                    por que.
+     *
+     * Cuando todas las discrepancias del traslado pasan a RESOLVED o
+     * WRITTEN_OFF, el traslado se cierra como RECEIVED.
+     */
+    public function resolverDiscrepancia(
+        Transfer $transfer,
+        TransferDiscrepancy $discrepancia,
+        string $accion,
+        ?string $notes,
+        ?User $usuario,
+    ): TransferDiscrepancy {
+        if ($usuario === null) {
+            throw new KardexStateException('Se necesita un usuario autenticado para resolver una discrepancia.');
+        }
+
+        // Dar de baja una discrepancia es asumir una perdida de stock:
+        // decision autoritativa, exclusiva del regente.
+        Gate::forUser($usuario)->authorize('resolver-discrepancia');
+
+        if ($discrepancia->transfer_id !== $transfer->id) {
+            throw new KardexStateException('La discrepancia no pertenece a este traslado.');
+        }
+
+        if ($discrepancia->status !== TransferDiscrepancy::STATUS_PENDING) {
+            throw new KardexStateException(
+                "La discrepancia ya esta en estado {$discrepancia->status} y no se puede resolver de nuevo."
+            );
+        }
+
+        $nuevoEstado = match ($accion) {
+            'resolve' => TransferDiscrepancy::STATUS_RESOLVED,
+            'write_off' => TransferDiscrepancy::STATUS_WRITTEN_OFF,
+            default => throw new KardexStateException(
+                "Accion de resolucion invalida: {$accion}. Use 'resolve' o 'write_off'."
+            ),
+        };
+
+        return DB::transaction(function () use ($transfer, $discrepancia, $nuevoEstado, $notes, $usuario) {
+            $transfer = Transfer::whereKey($transfer->id)->lockForUpdate()->first();
+
+            $discrepancia->status = $nuevoEstado;
+            $discrepancia->resolution_notes = $notes;
+            $discrepancia->resolved_by = $usuario->id;
+            $discrepancia->resolved_at = now();
+            $discrepancia->save();
+
+            // Si no quedan discrepancias PENDING en este traslado,
+            // cerrarlo como RECEIVED.
+            $pendientes = TransferDiscrepancy::where('transfer_id', $transfer->id)
+                ->where('status', TransferDiscrepancy::STATUS_PENDING)
+                ->exists();
+
+            if (! $pendientes) {
+                $transfer->status_id = TransferStatus::porNombre('RECEIVED')->id;
+                $transfer->save();
+            }
+
+            return $discrepancia->fresh();
         });
     }
 
@@ -440,6 +596,11 @@ class TransferService
         if ($usuario === null) {
             throw new KardexStateException('Se necesita un usuario autenticado para anular un traslado.');
         }
+
+        // Anular es decision autoritativa: la matriz se la da solo al
+        // regente. Sin esta linea, el auxiliar podria anular porque
+        // tiene transfers.can_update.
+        Gate::forUser($usuario)->authorize('anular-traslado');
 
         return DB::transaction(function () use ($transfer, $motivo, $usuario) {
             $transfer = Transfer::whereKey($transfer->id)->lockForUpdate()->first();
