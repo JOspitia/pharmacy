@@ -74,6 +74,13 @@ class StoreTransferRequest extends FormRequest
             'items.*.inventory_id' => [
                 'required',
                 'uuid',
+                // Un mismo inventario (producto + lote) no puede repetirse
+                // dentro de un traslado: es la misma existencia fisica, asi
+                // que dos filas serian redundantes y la segunda violaria el
+                // UNIQUE (transfer_id, inventory_id) de transfer_items.
+                // Sin esto el error sale como 500 por QueryException en vez
+                // de un 422 con mensaje util.
+                'distinct',
                 Rule::exists('inventories', 'id'),
             ],
 
@@ -94,13 +101,14 @@ class StoreTransferRequest extends FormRequest
 
             'notes.max' => 'Las notas no pueden superar los 1000 caracteres.',
 
-            'items.required' => 'El traslado debe incluir al menos un item.',
-            'items.array' => 'Los items deben ser un arreglo.',
-            'items.min' => 'El traslado debe incluir al menos un item.',
+            'items.required' => 'El traslado debe incluir al menos un ítem.',
+            'items.array' => 'Los ítems deben ser un arreglo.',
+            'items.min' => 'El traslado debe incluir al menos un ítem.',
 
-            'items.*.inventory_id.required' => 'Cada item debe tener un inventario asociado.',
-            'items.*.inventory_id.uuid' => 'El inventario del item debe ser un identificador valido.',
+            'items.*.inventory_id.required' => 'Cada ítem debe tener un inventario asociado.',
+            'items.*.inventory_id.uuid' => 'El inventario del ítem debe ser un identificador válido.',
             'items.*.inventory_id.exists' => 'Uno de los inventarios seleccionados no existe.',
+            'items.*.inventory_id.distinct' => 'El mismo inventario no puede repetirse en un traslado. Ya esta agregado en otra linea.',
 
             'items.*.requested_quantity.required' => 'La cantidad solicitada es obligatoria.',
             'items.*.requested_quantity.integer' => 'La cantidad solicitada debe ser un numero entero.',
