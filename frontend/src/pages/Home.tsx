@@ -36,6 +36,10 @@ export function Home() {
         <CardLink title="Bodegas" description="Administra las bodegas" path="/bodegas" />
         <CardLink title="Productos" description="CRUD de productos" path="/products" />
         <CardLink title="Lotes" description="Parametrización de lotes" path="/lots" />
+        <CardLink title="Inventario" description="Existencias por bodega y alertas" path="/inventario" />
+        <CardLink title="Kardex" description="Historial de movimientos" path="/kardex" />
+        <CardLink title="Traslados" description="Traslados entre bodegas (HU-09)" path="/traslados" />
+        <CardLink title="Reporte Inventario" description="Reporte de inventario valorizado" path="/reports/inventory" />
       </div>
     </>
   )
