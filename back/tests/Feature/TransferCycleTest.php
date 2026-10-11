@@ -245,6 +245,37 @@ class TransferCycleTest extends TestCase
     }
 
     // -------------------------------------------------------------------------
+    // El mismo inventario no puede repetirse dentro de un traslado.
+    //
+    // Sin la regla `distinct` en StoreTransferRequest, el servicio
+    // valida el stock linea por linea (5 > 8 es falso dos veces) y
+    // luego el segundo INSERT viola el UNIQUE (transfer_id,
+    // inventory_id): la peticion terminaba en HTTP 500 por
+    // QueryException en vez de un 422 con mensaje util.
+    // -------------------------------------------------------------------------
+
+    public function test_inventario_repetido_en_un_traslado_es_rechazado(): void
+    {
+        $auxiliar = $this->auxiliar();
+        $datos = $this->setupBodegasYInventario(50);
+
+        $response = $this->actingAs($auxiliar, 'sanctum')->postJson('/api/transfers', [
+            'to_warehouse_id' => $datos['destino']->id,
+            // El mismo inventory_id dos veces. Cada linea por separado
+            // tiene stock de sobra (5 <= 50), asi que sin `distinct` la
+            // validacion de stock pasaria y reventaria el INSERT.
+            'items' => [
+                ['inventory_id' => $datos['inventario']->id, 'requested_quantity' => 5],
+                ['inventory_id' => $datos['inventario']->id, 'requested_quantity' => 5],
+            ],
+        ]);
+
+        // 422 y NO 500: el mensaje debe llegar al usuario.
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors('items.1.inventory_id');
+    }
+
+    // -------------------------------------------------------------------------
     // CA-12: Validar bodega origen y destino distintas
     // (El FormRequest no valida esto porque from_warehouse_id no viene
     // en el body: se deduce del inventory. La validacion vive en el
