@@ -91,3 +91,170 @@ export async function getAuthToken(request: APIRequestContext, name = REGENTE.na
   return body.token
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Helpers de setup: crear traslados en estado DRAFT/APPROVED/IN_TRANSIT sin
+// pasar por la UI. La UI tiene sus propios tests; aca preparamos el estado
+// para poder probar approve, dispatch, receive, discrepancias y resolucion.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Devuelve headers Authorization para un rol dado. Cachea el token. */
+const tokenCache = new Map<string, string>()
+export async function authHeader(request: APIRequestContext, name: string): Promise<{ Authorization: string }> {
+  if (!tokenCache.has(name)) {
+    const response = await request.post('/api/login', {
+      data: { name, password: 'password' },
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    })
+    if (!response.ok()) throw new Error(`login ${name} fallo: ${response.status()}`)
+    const body = await response.json()
+    tokenCache.set(name, body.token)
+  }
+  return { Authorization: `Bearer ${tokenCache.get(name)}` }
+}
+
+/** Crea un inventario y devuelve su id (helper de setup). */
+export async function crearInventario(
+  request: APIRequestContext,
+  warehouseId: string,
+  productId: string,
+  lotId: string,
+  quantity: number,
+  auth: { Authorization: string },
+): Promise<string> {
+  const response = await request.post('/api/inventories', {
+    headers: { ...auth, 'Content-Type': 'application/json', Accept: 'application/json' },
+    data: { warehouse_id: warehouseId, product_id: productId, lot_id: lotId, quantity },
+  })
+  if (!response.ok()) {
+    const body = await response.text()
+    throw new Error(`POST /api/inventories ${response.status()}: ${body}`)
+  }
+  const body = await response.json()
+  return body.data.id
+}
+
+/** Crea un traslado en DRAFT. items: [{inventory_id, requested_quantity}]. */
+export async function crearTrasladoDraft(
+  request: APIRequestContext,
+  toWarehouseId: string,
+  items: { inventory_id: string; requested_quantity: number }[],
+  auth: { Authorization: string },
+): Promise<{ id: string; transfer_number: string; item_ids: string[] }> {
+  const response = await request.post('/api/transfers', {
+    headers: { ...auth, 'Content-Type': 'application/json', Accept: 'application/json' },
+    data: { to_warehouse_id: toWarehouseId, items },
+  })
+  if (!response.ok()) {
+    const body = await response.text()
+    throw new Error(`POST /api/transfers ${response.status()}: ${body}`)
+  }
+  const body = await response.json()
+  return {
+    id: body.data.id,
+    transfer_number: body.data.transfer_number,
+    item_ids: (body.data.items ?? []).map((it: { id: string }) => it.id),
+  }
+}
+
+/** Aprueba un traslado. items: [{transfer_item_id, approved_quantity}]. */
+export async function aprobarTraslado(
+  request: APIRequestContext,
+  transferId: string,
+  items: { transfer_item_id: string; approved_quantity: number }[],
+  auth: { Authorization: string },
+): Promise<void> {
+  const response = await request.patch(`/api/transfers/${transferId}/approve`, {
+    headers: { ...auth, 'Content-Type': 'application/json', Accept: 'application/json' },
+    data: { items },
+  })
+  if (!response.ok()) {
+    const body = await response.text()
+    throw new Error(`PATCH /approve ${response.status()}: ${body}`)
+  }
+}
+
+/** Despacha un traslado (APPROVED -> IN_TRANSIT). */
+export async function despacharTraslado(
+  request: APIRequestContext,
+  transferId: string,
+  auth: { Authorization: string },
+): Promise<void> {
+  const response = await request.patch(`/api/transfers/${transferId}/dispatch`, {
+    headers: { ...auth, 'Content-Type': 'application/json', Accept: 'application/json' },
+  })
+  if (!response.ok()) {
+    const body = await response.text()
+    throw new Error(`PATCH /dispatch ${response.status()}: ${body}`)
+  }
+}
+
+/** Recibe un traslado. items: [{transfer_item_id, delivered_quantity}]. */
+export async function recibirTraslado(
+  request: APIRequestContext,
+  transferId: string,
+  items: { transfer_item_id: string; delivered_quantity: number }[],
+  auth: { Authorization: string },
+): Promise<void> {
+  const response = await request.patch(`/api/transfers/${transferId}/receive`, {
+    headers: { ...auth, 'Content-Type': 'application/json', Accept: 'application/json' },
+    data: { items },
+  })
+  if (!response.ok()) {
+    const body = await response.text()
+    throw new Error(`PATCH /receive ${response.status()}: ${body}`)
+  }
+}
+
+/** Lee un traslado (GET /api/transfers/{id}) y lo devuelve entero. */
+export async function obtenerTraslado(
+  request: APIRequestContext,
+  transferId: string,
+  auth: { Authorization: string },
+): Promise<any> {
+  const response = await request.get(`/api/transfers/${transferId}`, {
+    headers: { ...auth, Accept: 'application/json' },
+  })
+  if (!response.ok()) {
+    const body = await response.text()
+    throw new Error(`GET /api/transfers/${transferId} ${response.status()}: ${body}`)
+  }
+  const body = await response.json()
+  return body.data
+}
+
+/**
+ * Helper de setup: lleva un traslado desde cero hasta IN_TRANSIT.
+ * Crea el traslado con un item, lo aprueba con la cantidad solicitada
+ * y lo despacha. Devuelve los ids utiles.
+ */
+export async function setupTrasladoInTransit(
+  request: APIRequestContext,
+  inventoryId: string,
+  itemIdInInventory: string,
+  toWarehouseId: string,
+  requestedQuantity: number,
+  regenteAuth: { Authorization: string },
+  auxiliarAuth: { Authorization: string },
+): Promise<{ transferId: string; transferItemId: string; transferNumber: string }> {
+  // auxiliar crea
+  const draft = await crearTrasladoDraft(
+    request,
+    toWarehouseId,
+    [{ inventory_id: inventoryId, requested_quantity: requestedQuantity }],
+    auxiliarAuth,
+  )
+  // regente aprueba y despacha
+  await aprobarTraslado(
+    request,
+    draft.id,
+    [{ transfer_item_id: draft.item_ids[0], approved_quantity: requestedQuantity }],
+    regenteAuth,
+  )
+  await despacharTraslado(request, draft.id, regenteAuth)
+  return {
+    transferId: draft.id,
+    transferItemId: draft.item_ids[0],
+    transferNumber: draft.transfer_number,
+  }
+}
+
