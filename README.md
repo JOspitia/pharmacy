@@ -50,6 +50,59 @@ Para detener y borrar también el volumen de la base:
 docker compose down -v
 ```
 
+### Modo desarrollo con hot reload (sin rebuild en cada cambio)
+
+Por defecto, `docker compose up` levanta el stack con la imagen "horneada" del
+Dockerfile. Cualquier edit en `back/app/`, `back/routes/`, `back/tests/`, etc.
+obliga a un `docker compose build` (varios minutos) para verse.
+
+Para iterar sin rebuild, hay un override de desarrollo que monta los fuentes
+como bind mount y arranca un entrypoint específico:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+```
+
+Qué cambia respecto al modo normal:
+
+- Los fuentes de `back/app`, `back/config`, `back/database`, `back/routes`,
+  `back/tests`, `back/resources`, `back/public` y `back/bootstrap` viven en
+  el host y se sincronizan al contenedor. Cualquier edit se ve en el
+  siguiente request sin rebuild.
+- `vendor/`, `bootstrap/cache/` y la imagen de PHP base no se montan, así
+  que la instalación de Composer y la imagen son las del build original.
+- El `CMD` por defecto se reemplaza por `back/docker-dev-entrypoint.sh`,
+  que limpia caches (`config:clear`, `route:clear`, `view:clear`) y arranca
+  `php artisan serve`.
+- El frontend usa `CHOKIDAR_USEPOLLING=true` para que Vite detecte los
+  cambios en archivos bind-mounted desde Windows (sin esto, HMR queda
+  sordo).
+
+Para parar el modo dev:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml down
+```
+
+Para volver al modo "estándar" (imagen horneada):
+
+```bash
+docker compose down
+docker compose up -d
+```
+
+### Modo producción
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+```
+
+El override de producción:
+
+- No monta bind mounts: el código queda dentro de la imagen.
+- Corre `migrate --force` y cachea config/route/view antes de arrancar.
+- Es la forma correcta de validar la imagen antes de un release.
+
 ### Variables de entorno
 
 El backend dentro de Docker usa `back/.env.docker`, que está versionado porque

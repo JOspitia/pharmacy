@@ -1,0 +1,66 @@
+# Override para desarrollo.
+#
+# docker compose up -d   (levanta con este override automaticamente)
+# docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d   (produccion)
+#
+# Que cambia respecto a docker-compose.yml:
+#   - bind mount del codigo fuente: cualquier edit en ./back se ve en el
+#     contenedor sin rebuild.
+#   - NO monta vendor/ ni bootstrap/cache/ para no pisar lo que instalo
+#     composer en el build.
+#   - monta storage/ y crea los subdirectorios escribibles que Laravel
+#     necesita (logs, framework/cache, framework/views, framework/sessions).
+#   - volumen anonimo para node_modules del frontend (vite resuelve desde
+#     el contenedor pero los fuentes viven en el host).
+#   - comando distinto: salta el `migrate --seed` del build (ya esta
+#     aplicada la migracion) y queda corriendo un watcher que reinicia
+#     `php artisan serve` cuando cambia cualquier .php de app/ o routes/.
+
+services:
+  backend:
+    # Reusar la imagen ya construida: no se hace build en dev para que un
+    # cambio en el codigo no obligue a esperar el apt-get install.
+    build:
+      context: ./back
+      dockerfile: Dockerfile
+    volumes:
+      # Codigo de la app: app, bootstrap, config, database, public, resources, routes, tests.
+      # Excluyo vendor/ y bootstrap/cache/ con bind mounts selectivos.
+      - ./back/app:/var/www/html/app
+      - ./back/bootstrap:/var/www/html/bootstrap
+      - ./back/config:/var/www/html/config
+      - ./back/database:/var/www/html/database
+      - ./back/public:/var/www/html/public
+      - ./back/resources:/var/www/html/resources
+      - ./back/routes:/var/www/html/routes
+      - ./back/tests:/var/www/html/tests
+      # storage: el host lo escribe pero la app lo lee. En produccion esto
+      # se monta como volumen nombrado.
+      - ./back/storage:/var/www/html/storage
+    environment:
+      # Asegurar que el autoloader no este optimizado: asi no hay que
+      # correr composer dump-autoload cada vez que se agrega una clase.
+      - COMPOSER_AUTOLOADER_OPTIMIZE=false
+    command: ["sh", "/var/www/html/docker-dev-entrypoint.sh"]
+
+  frontend:
+    # En dev el frontend puede usar bind mount con un polling watcher,
+    # pero en Windows los bind mounts son lentos para node_modules. La
+    # forma robusta es dejar que el contenedor maneje su propio node_modules
+    # y montar solo los fuentes que Vite necesita recompilar.
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    volumes:
+      - ./frontend/src:/app/src
+      - ./frontend/public:/app/public
+      - ./frontend/index.html:/app/index.html
+      - ./frontend/vite.config.ts:/app/vite.config.ts
+      - ./frontend/tsconfig.json:/app/tsconfig.json
+      - ./frontend/package.json:/app/package.json
+    environment:
+      # Forzar a Vite a usar polling en vez de eventos nativos. Sin esto,
+      # dentro de un contenedor de Docker Desktop sobre Windows los
+      # cambios en archivos bind-mounted no se notan y el HMR queda sordo.
+      - CHOKIDAR_USEPOLLING=true
+      - WATCHPACK_POLLING=true

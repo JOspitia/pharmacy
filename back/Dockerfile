@@ -93,6 +93,11 @@ COPY . .
 
 RUN composer dump-autoload --optimize
 
+# El script de dev se copia con la imagen para que el override de
+# docker-compose pueda ejecutarlo. En produccion no se usa: el CMD
+# del final arranca `php artisan serve` directamente.
+RUN chmod +x /var/www/html/docker-dev-entrypoint.sh
+
 # El servidor escucha en 0.0.0.0 para que sea alcanzable desde el exterior
 # del contenedor; si escucha en localhost el puerto publicado no responde.
 EXPOSE 8000
