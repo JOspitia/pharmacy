@@ -12,6 +12,7 @@ import {
   AppstoreOutlined,
   BarChartOutlined,
   DatabaseOutlined,
+  HistoryOutlined,
   InboxOutlined,
   ShoppingOutlined,
   TeamOutlined,
@@ -45,7 +46,9 @@ const navItems: NavItem[] = [
   { key: '3', label: 'Bodegas', icon: <DatabaseOutlined />, path: '/bodegas' },
   { key: '4', label: 'Productos', icon: <ShoppingOutlined />, path: '/products' },
   { key: '5', label: 'Lotes', icon: <InboxOutlined />, path: '/lots' },
-  { key: '6', label: 'Reporte Inventario', icon: <BarChartOutlined />, path: '/reports/inventory' },
+  { key: '6', label: 'Inventario', icon: <BarChartOutlined />, path: '/inventario' },
+  { key: '7', label: 'Kardex', icon: <HistoryOutlined />, path: '/kardex' },
+  { key: '8', label: 'Reporte Inventario', icon: <BarChartOutlined />, path: '/reports/inventory' },
 ]
 
 /**
