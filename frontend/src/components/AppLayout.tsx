@@ -15,6 +15,7 @@ import {
   HistoryOutlined,
   InboxOutlined,
   ShoppingOutlined,
+  SwapOutlined,
   TeamOutlined,
   LogoutOutlined,
 } from '@ant-design/icons'
@@ -48,6 +49,7 @@ const navItems: NavItem[] = [
   { key: '5', label: 'Lotes', icon: <InboxOutlined />, path: '/lots' },
   { key: '6', label: 'Inventario', icon: <BarChartOutlined />, path: '/inventario' },
   { key: '7', label: 'Kardex', icon: <HistoryOutlined />, path: '/kardex' },
+  { key: '9', label: 'Traslados', icon: <SwapOutlined />, path: '/traslados' },
   { key: '8', label: 'Reporte Inventario', icon: <BarChartOutlined />, path: '/reports/inventory' },
 ]
 

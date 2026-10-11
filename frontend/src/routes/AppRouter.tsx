@@ -16,6 +16,7 @@ import { ProductFormModal, ProductsList } from '../pages/Products'
 import { LotFormModal, LotsList } from '../pages/Lots'
 import { ReportProducts } from '../pages/Reports'
 import { InventoriesList, KardexList } from '../pages/Kardex'
+import { TransfersList } from '../pages/Transfers/TransfersList'
 
 /**
  * PrivateLayout - Layout para rutas privadas
@@ -89,6 +90,8 @@ const router = createBrowserRouter([
 			// Kardex (HU-08): inventario paginado con alertas + historial de movimientos.
 			{ path: '/inventario', element: <InventoriesList /> },
 			{ path: '/kardex', element: <KardexList /> },
+			// Traslados (HU-09): lista de traslados con acciones de flujo.
+			{ path: '/traslados', element: <TransfersList /> },
 			{ path: '/reports/inventory', element: <ReportProducts /> },
 			{ path: '/', element: <Navigate to="/Home" replace /> },
 			// Ruta de redirección a la ruta base de inicio para rutas no encontradas
