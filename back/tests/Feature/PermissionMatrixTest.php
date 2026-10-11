@@ -67,13 +67,30 @@ class PermissionMatrixTest extends TestCase
         );
     }
 
-    public function test_se_cargan_los_siete_modulos(): void
+    public function test_se_cargan_los_once_modulos(): void
     {
         $this->assertSame(
-            // Orden alfabetico por name: groups, lots, products, reports,
-            // sensors, users, warehouses. La posicion importa porque la
-            // consulta trae orderBy('name') y assertSame compara el orden.
-            ['groups', 'lots', 'products', 'reports', 'sensors', 'users', 'warehouses'],
+            // Orden alfabetico por name. La posicion importa porque la consulta
+            // trae orderBy('name') y assertSame compara el orden.
+            //
+            // kardex, transfers, patients y prescriptions llegaron con HU-08.
+            // Los tres primeros tambien viven en ModuleSeeder desde antes, pero
+            // patients y prescriptions todavia no tienen rutas: se siembran
+            // ahora para que la matriz de permisos exista cuando las HUs
+            // correspondientes se implementen.
+            [
+                'groups',
+                'kardex',
+                'lots',
+                'patients',
+                'prescriptions',
+                'products',
+                'reports',
+                'sensors',
+                'transfers',
+                'users',
+                'warehouses',
+            ],
             DB::table('modules')->orderBy('name')->pluck('name')->all()
         );
     }
@@ -280,7 +297,7 @@ public function test_admin_consulta_todos_los_modulos_y_escribe_solo_where_corre
         $this->assertFalse($this->tiene('medico', 'warehouses.can_create'));
     }
 
-    public function test_auditor_es_solo_lectura_en_los_seis_modulos(): void
+    public function test_auditor_es_solo_lectura_en_los_siete_modulos(): void
     {
         $modulos = DB::table('role_permissions')
             ->join('roles', 'roles.id', '=', 'role_permissions.role_id')
@@ -290,9 +307,11 @@ public function test_admin_consulta_todos_los_modulos_y_escribe_solo_where_corre
             ->distinct()
             ->count('permissions.module_id');
 
-        $this->assertSame(6, $modulos);
+        // Siete modulos con permisos de lectura para auditor: los seis originales
+        // mas kardex (HU-08).
+        $this->assertSame(7, $modulos);
 
-        foreach (['warehouses', 'groups', 'products', 'lots', 'sensors', 'reports'] as $modulo) {
+        foreach (['warehouses', 'groups', 'products', 'lots', 'sensors', 'reports', 'kardex'] as $modulo) {
             $this->assertTrue($this->tiene('auditor', "{$modulo}.can_read"), "auditor deberia leer {$modulo}");
             $this->assertFalse($this->tiene('auditor', "{$modulo}.can_create"));
             $this->assertFalse($this->tiene('auditor', "{$modulo}.can_update"));

@@ -3,6 +3,7 @@
 namespace Tests\Feature\Models;
 
 use App\Models\Bodega;
+use App\Models\Inventory;
 use App\Models\Lot;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -58,7 +59,13 @@ class BodegaTest extends TestCase
         $bodega = Bodega::factory()->create();
         $this->assertCount(0, $bodega->lots);
 
-        Lot::factory()->count(2)->create(['warehouse_id' => $bodega->id]);
+        // HU-08: un lote ya no tiene bodega. La relacion bodega -> lotes pasa por
+        // inventories: la bodega tiene existencias y cada existencia apunta a
+        // un lote. Por eso se crean existencias, no lotes sueltos.
+        $lote = Lot::factory()->create();
+        $lote2 = Lot::factory()->create();
+        Inventory::factory()->create(['warehouse_id' => $bodega->id, 'lot_id' => $lote->id, 'product_id' => $lote->product_id]);
+        Inventory::factory()->create(['warehouse_id' => $bodega->id, 'lot_id' => $lote2->id, 'product_id' => $lote2->product_id]);
 
         $this->assertCount(2, $bodega->fresh()->lots);
     }

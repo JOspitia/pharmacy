@@ -352,9 +352,21 @@ public function test_admin_administra_catalogos_pero_no_escribe_en_stock(): void
      * Lote valido dentro de una bodega, para las pruebas que necesitan un id
      * real que exista (los 404 del controller confoundiran el 403 del
      * middleware si no).
+     *
+     * HU-08 (RN-01): el lote ya no tiene bodega. La pertenencia se establece
+     * creando una existencia que apunte al lote en la bodega dada, que es lo
+     * que el dominio considera "el lote esta en esta bodega".
      */
     private function loteDeEjemplo(Bodega $bodega): \App\Models\Lot
     {
-        return \App\Models\Lot::factory()->create(['warehouse_id' => $bodega->id]);
+        $lote = \App\Models\Lot::factory()->create();
+
+        \App\Models\Inventory::factory()->create([
+            'warehouse_id' => $bodega->id,
+            'lot_id' => $lote->id,
+            'product_id' => $lote->product_id,
+        ]);
+
+        return $lote;
     }
 }
