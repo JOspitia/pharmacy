@@ -223,39 +223,3 @@ export async function obtenerTraslado(
   return body.data
 }
 
-/**
- * Helper de setup: lleva un traslado desde cero hasta IN_TRANSIT.
- * Crea el traslado con un item, lo aprueba con la cantidad solicitada
- * y lo despacha. Devuelve los ids utiles.
- */
-export async function setupTrasladoInTransit(
-  request: APIRequestContext,
-  inventoryId: string,
-  itemIdInInventory: string,
-  toWarehouseId: string,
-  requestedQuantity: number,
-  regenteAuth: { Authorization: string },
-  auxiliarAuth: { Authorization: string },
-): Promise<{ transferId: string; transferItemId: string; transferNumber: string }> {
-  // auxiliar crea
-  const draft = await crearTrasladoDraft(
-    request,
-    toWarehouseId,
-    [{ inventory_id: inventoryId, requested_quantity: requestedQuantity }],
-    auxiliarAuth,
-  )
-  // regente aprueba y despacha
-  await aprobarTraslado(
-    request,
-    draft.id,
-    [{ transfer_item_id: draft.item_ids[0], approved_quantity: requestedQuantity }],
-    regenteAuth,
-  )
-  await despacharTraslado(request, draft.id, regenteAuth)
-  return {
-    transferId: draft.id,
-    transferItemId: draft.item_ids[0],
-    transferNumber: draft.transfer_number,
-  }
-}
-

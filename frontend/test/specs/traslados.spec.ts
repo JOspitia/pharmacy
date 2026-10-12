@@ -701,7 +701,7 @@ test.describe('Traslados — recepcion y discrepancias', () => {
     expect(all.filter((d) => d.status === 'PENDING')).toHaveLength(0)
     const written = all.find((d) => d.status === 'WRITTEN_OFF')
     expect(written).toBeTruthy()
-    expect(written.resolution_notes).toContain('Merma')
+    expect(written!.resolution_notes).toContain('Merma')
   })
 
   test('recepcion tardia completa el faltante: la discrepancia se cierra sola', async ({
@@ -732,7 +732,7 @@ test.describe('Traslados — recepcion y discrepancias', () => {
     expect(all.filter((d) => d.status === 'PENDING')).toHaveLength(0)
     const resolved = all.find((d) => d.status === 'RESOLVED')
     expect(resolved).toBeTruthy()
-    expect(resolved.resolution_notes).toContain('recepcion tardia')
+    expect(resolved!.resolution_notes).toContain('recepcion tardia')
   })
 
   test('boton Corregir en la lista abre el detalle del traslado parcial', async ({
