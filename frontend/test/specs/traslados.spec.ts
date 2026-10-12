@@ -21,6 +21,12 @@ import {
   AprobarTrasladoModal,
   RecibirTrasladoModal,
 } from '../pages/TransfersPage'
+import type {
+  InventoryRecord,
+  BodegaRecord,
+  TransferRecord,
+  TransferDiscrepancyRecord,
+} from '../types'
 
 const DESTINO_NAME = 'Farmacia Central'
 const CANTIDAD_PRUEBA = 2
@@ -113,7 +119,7 @@ async function getTransfer(
   req: import('@playwright/test').APIRequestContext,
   transferId: string,
   auth: { Authorization: string },
-): Promise<any> {
+): Promise<TransferRecord> {
   const res = await req.get(`/api/transfers/${transferId}`, {
     headers: { ...auth, Accept: 'application/json' },
   })
@@ -130,16 +136,16 @@ async function getTransfer(
 async function findValidInventory(
   req: import('@playwright/test').APIRequestContext,
   minQty: number,
-): Promise<{ inv: any; destino: any } | null> {
+): Promise<{ inv: InventoryRecord; destino: BodegaRecord } | null> {
   const regente = await getAuth(req, 'regente')
 
   const invRes = await req.get('/api/inventories?per_page=100', {
     headers: { ...regente, Accept: 'application/json' },
   })
-  const invs = (await invRes.json()).data ?? []
+  const invs: InventoryRecord[] = (await invRes.json()).data ?? []
 
   // Primero: buscar uno existente con stock suficiente y lote no vencido.
-  const existente = invs.find((i: any) => {
+  const existente = invs.find((i: InventoryRecord) => {
     if (i.bodega?.name === DESTINO_NAME) return false
     if (i.quantity < minQty) return false
     if (i.lot?.name && /VENC(ID)?/i.test(i.lot.name)) return false
@@ -156,7 +162,9 @@ async function findValidInventory(
     const bodRes = await req.get('/api/bodegas?per_page=100', {
       headers: { ...regente, Accept: 'application/json' },
     })
-    const destino = (await bodRes.json()).data.find((b: any) => b.name === DESTINO_NAME)
+    const destino = (await bodRes.json()).data.find(
+      (b: BodegaRecord) => b.name === DESTINO_NAME,
+    )
     return destino ? { inv: existente, destino } : null
   }
 
@@ -165,12 +173,12 @@ async function findValidInventory(
   const bodRes = await req.get('/api/bodegas?per_page=100', {
     headers: { ...regente, Accept: 'application/json' },
   })
-  const todasBodegas: any[] = (await bodRes.json()).data ?? []
-  const destino = todasBodegas.find((b: any) => b.name === DESTINO_NAME)
+  const todasBodegas: BodegaRecord[] = (await bodRes.json()).data ?? []
+  const destino = todasBodegas.find((b: BodegaRecord) => b.name === DESTINO_NAME)
   if (!destino) return null
 
   const origen = todasBodegas.find(
-    (b: any) => b.id !== destino.id && b.name !== DESTINO_NAME,
+    (b: BodegaRecord) => b.id !== destino.id && b.name !== DESTINO_NAME,
   )
   if (!origen) return null
 
@@ -178,7 +186,7 @@ async function findValidInventory(
   const prodRes = await req.get('/api/products?per_page=10', {
     headers: { ...regente, Accept: 'application/json' },
   })
-  const productos: any[] = (await prodRes.json()).data ?? []
+  const productos = (await prodRes.json()).data ?? []
   if (!productos.length) return null
 
   // Obtener lotes no vencidos para ese producto.
@@ -187,8 +195,9 @@ async function findValidInventory(
   })
   const today = new Date()
   today.setHours(0, 0, 0, 0)
-  const lotes: any[] = (await lotRes.json()).data ?? []
-  const loteValido = lotes.find((l: any) => {
+  const lotes: { id: string; name: string; expiry_date: string | null }[] =
+    (await lotRes.json()).data ?? []
+  const loteValido = lotes.find((l) => {
     if (!l.expiry_date) return false
     const exp = new Date(l.expiry_date)
     exp.setHours(0, 0, 0, 0)
@@ -209,7 +218,7 @@ async function findValidInventory(
     },
   })
   if (!crearRes.ok()) return null
-  const nuevoInv: any = (await crearRes.json()).data
+  const nuevoInv: InventoryRecord = (await crearRes.json()).data
   if (!nuevoInv) return null
 
   return { inv: nuevoInv, destino }
@@ -346,7 +355,6 @@ test.describe('Traslados — ciclo completo via UI', () => {
     if (!found) { test.skip(); return }
     const { inv, destino } = found
 
-    const regente = await getAuth(page.request, 'regente')
     const auxiliar = await getAuth(page.request, 'auxiliar')
 
     const draft = await crearDraft(
@@ -413,7 +421,6 @@ test.describe('Traslados — ciclo completo via UI', () => {
     if (!found) { test.skip(); return }
     const { inv, destino } = found
 
-    const regente = await getAuth(page.request, 'regente')
     const auxiliar = await getAuth(page.request, 'auxiliar')
 
     const draft = await crearDraft(
@@ -447,7 +454,7 @@ test.describe('Traslados — recepcion y discrepancias', () => {
   test('recibir completo: regente recibe la cantidad aprobada y el traslado pasa a Recibido', async ({
     loggedInPage: page,
   }) => {
-    let t: any
+    let t: { id: string; itemId: string; number: string }
     try {
       const setup = await setupInTransit(page.request, CANTIDAD_PRUEBA)
       t = setup
@@ -545,7 +552,9 @@ test.describe('Traslados — recepcion y discrepancias', () => {
     // Verificar via API.
     const t = await getTransfer(page.request, draft.id, regente)
     expect(t.status_name).toBe('PARTIALLY_RECEIVED')
-    const pending = (t.discrepancies ?? []).filter((d: any) => d.status === 'PENDING')
+    const pending = (t.discrepancies ?? []).filter(
+      (d: TransferDiscrepancyRecord) => d.status === 'PENDING',
+    )
     expect(pending).toHaveLength(1)
     expect(pending[0].difference).toBe(CANTIDAD_PRUEBA)
   })
@@ -638,9 +647,9 @@ test.describe('Traslados — recepcion y discrepancias', () => {
     // Verificar via API: discrepancia RESOLVED, traslado RECEIVED.
     const t = await getTransfer(page.request, draft.id, regente)
     expect(t.status_name).toBe('RECEIVED')
-    const all = t.discrepancies ?? []
-    expect(all.filter((d: any) => d.status === 'PENDING')).toHaveLength(0)
-    const resolved = all.find((d: any) => d.status === 'RESOLVED')
+    const all: TransferDiscrepancyRecord[] = t.discrepancies ?? []
+    expect(all.filter((d) => d.status === 'PENDING')).toHaveLength(0)
+    const resolved = all.find((d) => d.status === 'RESOLVED')
     expect(resolved).toBeTruthy()
   })
 
@@ -688,9 +697,9 @@ test.describe('Traslados — recepcion y discrepancias', () => {
 
     const t = await getTransfer(page.request, draft.id, regente)
     expect(t.status_name).toBe('RECEIVED')
-    const all = t.discrepancies ?? []
-    expect(all.filter((d: any) => d.status === 'PENDING')).toHaveLength(0)
-    const written = all.find((d: any) => d.status === 'WRITTEN_OFF')
+    const all: TransferDiscrepancyRecord[] = t.discrepancies ?? []
+    expect(all.filter((d) => d.status === 'PENDING')).toHaveLength(0)
+    const written = all.find((d) => d.status === 'WRITTEN_OFF')
     expect(written).toBeTruthy()
     expect(written.resolution_notes).toContain('Merma')
   })
@@ -719,9 +728,9 @@ test.describe('Traslados — recepcion y discrepancias', () => {
 
     const t = await getTransfer(page.request, draft.id, regente)
     expect(t.status_name).toBe('RECEIVED')
-    const all = t.discrepancies ?? []
-    expect(all.filter((d: any) => d.status === 'PENDING')).toHaveLength(0)
-    const resolved = all.find((d: any) => d.status === 'RESOLVED')
+    const all: TransferDiscrepancyRecord[] = t.discrepancies ?? []
+    expect(all.filter((d) => d.status === 'PENDING')).toHaveLength(0)
+    const resolved = all.find((d) => d.status === 'RESOLVED')
     expect(resolved).toBeTruthy()
     expect(resolved.resolution_notes).toContain('recepcion tardia')
   })

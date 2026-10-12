@@ -21,6 +21,7 @@
  * la UI real, pero el fixture loggedInPage va por la via rapida.
  */
 import { test as base, expect, type Page, type APIRequestContext } from '@playwright/test'
+import type { TransferRecord } from '../types'
 
 export const REGENTE = {
   name: 'regente',
@@ -210,7 +211,7 @@ export async function obtenerTraslado(
   request: APIRequestContext,
   transferId: string,
   auth: { Authorization: string },
-): Promise<any> {
+): Promise<TransferRecord> {
   const response = await request.get(`/api/transfers/${transferId}`, {
     headers: { ...auth, Accept: 'application/json' },
   })
